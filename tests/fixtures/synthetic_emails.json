@@ -1,0 +1,58 @@
+[
+  {
+    "id": "ordinary_legitimate",
+    "label": "ordinary synthetic business email",
+    "expected_review": false,
+    "expected_finding_ids": [],
+    "email": "From: Casey Example <casey@partner.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Meeting notes\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <meeting-1@partner.example>\r\n\r\nAttached are the notes from our scheduled meeting."
+  },
+  {
+    "id": "display_name_address_mismatch",
+    "label": "synthetic display-name and address mismatch",
+    "expected_review": true,
+    "expected_finding_ids": ["ALERT-THREAT-DISPLAY-EMAIL-SPOOF"],
+    "email": "From: \"Casey <casey@partner.example>\" <sender@outside.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Project update\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <mismatch-1@outside.example>\r\n\r\nPlease review the project update when convenient."
+  },
+  {
+    "id": "suspicious_url",
+    "label": "synthetic reserved-address URL with login path",
+    "expected_review": true,
+    "expected_finding_ids": ["ALERT-THREAT-URL-BARE-IP", "ALERT-THREAT-URL-CREDENTIAL-PATH"],
+    "email": "From: Notice <notice@service.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Account information\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <url-1@service.example>\r\n\r\nReview the synthetic page at http://192.0.2.44/login."
+  },
+  {
+    "id": "urgent_payment_request",
+    "label": "synthetic urgent payment language",
+    "expected_review": true,
+    "expected_finding_ids": ["ALERT-THREAT-FINANCIAL-WIRE_TRANSFER_REQUEST", "ALERT-THREAT-COERCIVE-TIGHT_DEADLINE_/_COERCIVE_WINDOW"],
+    "email": "From: Billing <billing@vendor.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Invoice review\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <payment-1@vendor.example>\r\n\r\nPlease review the wire transfer within 24 hours."
+  },
+  {
+    "id": "unknown_sender_no_warning_signals",
+    "label": "synthetic first-contact email with no threat indicators",
+    "expected_review": false,
+    "expected_finding_ids": [],
+    "email": "From: Morgan <morgan@new-contact.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Product question\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <new-contact-1@new-contact.example>\r\n\r\nCould you share the public product overview when you have time?"
+  },
+  {
+    "id": "mixed_evidence",
+    "label": "synthetic routine wording paired with risky URL",
+    "expected_review": true,
+    "expected_finding_ids": ["ALERT-THREAT-URL-BARE-IP", "ALERT-THREAT-URL-CREDENTIAL-PATH"],
+    "email": "From: Updates <updates@partner.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Routine information\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <mixed-1@partner.example>\r\n\r\nThe wording is routine, but the included URL is http://192.0.2.9/verify."
+  },
+  {
+    "id": "malformed_duplicate_from",
+    "label": "synthetic duplicate From headers",
+    "expected_review": true,
+    "expected_finding_ids": ["ALERT-ID-MULTIPLE-FROM", "ALERT-PARSER-WARNING", "ALERT-THREAT-HEADER-INJECTION"],
+    "email": "From: One <one@sender.example>\r\nFrom: Two <two@sender.example>\r\nTo: Taylor <taylor@company.example>\r\nSubject: Conflicting headers\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <malformed-1@sender.example>\r\n\r\nSynthetic malformed header sample."
+  },
+  {
+    "id": "incomplete_missing_sender",
+    "label": "synthetic incomplete email missing From",
+    "expected_review": false,
+    "expected_finding_ids": ["ALERT-ID-MISSING-FROM", "ALERT-PARSER-WARNING"],
+    "email": "To: Taylor <taylor@company.example>\r\nSubject: Incomplete sample\r\nDate: Tue, 20 Oct 2026 10:00:00 +0000\r\nMessage-ID: <incomplete-1@example.invalid>\r\n\r\nSynthetic incomplete input."
+  }
+]

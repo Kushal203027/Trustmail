@@ -1,0 +1,200 @@
+# TrustMail: Identity Assurance Specification
+
+**Document Version:** 1.0.0  
+**Phase:** 1 — Foundation and Security Requirements  
+**Classification:** Technical Specification & Identity Framework  
+**Reference Frameworks:** NIST SP 800-63-3 (Digital Identity Guidelines), W3C Verifiable Credentials Data Model 2.0, W3C Decentralized Identifiers (DIDs) v1.0, RFC 5321, RFC 5322, RFC 7208, RFC 6376, RFC 7489, RFC 8617  
+
+---
+
+## 1. Axiomatic Principles of the TrustMail Identity Model
+
+The TrustMail Identity Assurance Model is founded on three explicit prohibitions and three architectural axioms:
+
+### Prohibitions
+1. **The Authentication Fallacy:** The system SHALL NOT assume that email authentication (SPF, DKIM, DMARC) proves a sender's real-world identity.
+2. **The Anonymity Fallacy:** The system SHALL NOT assume that an unknown or unverified sender is malicious.
+3. **The Verification Fallacy:** The system SHALL NOT assume that a verified sender or authenticated domain is trustworthy or benign.
+
+### Axioms
+1. **Orthogonal Separation:** Identity Assurance, Message Authenticity, Sender Trust, and Threat Severity are mutually independent variables.
+2. **Multi-Tiered Granularity:** Identity cannot be represented as a boolean (`verified` vs `unverified`). It exists along a continuum of cryptographic and jurisdictional proof.
+3. **Privacy-Preserving Attestation:** High identity assurance does not require the receiving party to learn personal identity data; it requires mathematical proof that an authorized identity threshold has been validated by an authoritative issuer.
+
+---
+
+## 2. Taxonomy of Identity and Trust Dimensions
+
+To eliminate the ambiguities that plague existing email security gateways, TrustMail strictly decouples and formally defines eight discrete dimensions of identity, authenticity, trust, and attribution:
+
+```
++---------------------------------------------------------------------------------------------------+
+|                                DIMENSIONS OF SENDER ASSURANCE                                     |
++---------------------------------------------------------------------------------------------------+
+|  1. CLAIMED IDENTITY              (Unverified strings: From header, Display Name, avatar)         |
+|  2. ACCOUNT OWNERSHIP             (Control of mailbox / MTA session: SASL, OAuth 2.0)            |
+|  3. DOMAIN AUTHENTICATION         (Cryptographic binding to DNS domain: SPF, DKIM, DMARC, ARC)    |
+|  4. ORGANIZATIONAL VERIFICATION   (Legal entity binding: BIMI VMC, EV/OV X.509, Org DIDs)        |
+|  5. INDIVIDUAL IDENTITY           (Human identity binding: S/MIME, PGP, W3C Verifiable Creds)    |
+|  6. MESSAGE AUTHENTICITY          (Cryptographic payload integrity: Canonical body hash, sigs)   |
+|  7. SENDER TRUST                  (Historical, behavioral, and out-of-band reputation)            |
+|  8. FORENSIC ATTRIBUTION          (Post-hoc investigative certainty: Network hops, legal audit)   |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+## 3. Deep Analysis of the Eight Dimensions & Their Inherent Limitations
+
+### Dimension 1: Claimed Identity
+- **Definition:** The identity asserted by the presentation payload of the message, primarily the `RFC 5322.From` header, the `Friendly Display Name`, the `Reply-To` field, and arbitrary body branding/signatures.
+- **Verification Mechanism:** Plaintext string parsing of RFC 5322 headers.
+- **Inherent Limitations:**
+  - Zero cryptographic binding to transport, sender, or domain.
+  - Completely malleable by any entity with raw socket access.
+  - Subject to unicode homoglyphs, invisible whitespace, and spoofed display names (e.g., `"CEO Name" <attacker@free-mail.com>`).
+  - *Engineering Rule:* Claimed identity is treated strictly as an untrusted presentation string and is never used as an authorization or trust factor.
+
+### Dimension 2: Account Ownership
+- **Definition:** Proof that the entity submitting the message authenticated against the sending Mail Submission Agent (MSA) using valid credentials (e.g., SMTP AUTH, OAuth 2.0 bearer token, session cookie).
+- **Verification Mechanism:** Evaluation of upstream submission logs or authenticated transit headers (e.g., `Received: from ... with ESMTPSA`).
+- **Inherent Limitations:**
+  - Account ownership is strictly local to the sending MTA. Downstream receiving MTAs rarely have direct visibility into the sending MSA's authentication state.
+  - Account takeover (ATO) renders this check completely moot: an attacker possessing stolen credentials legitimately "owns" the account session.
+  - Automated bot accounts, bulk spam accounts, and throwaway test accounts exhibit valid account ownership.
+
+### Dimension 3: Domain Authentication
+- **Definition:** Proof that the message originated from infrastructure authorized by the DNS domain owner (SPF), or contains a cryptographic signature generated by a private key whose corresponding public key is published in the domain's DNS zone (DKIM), with DMARC validating alignment between the visible `From:` domain and authenticated domains.
+- **Verification Mechanism:** DNS lookups for TXT/RR records, cryptographic verification of `DKIM-Signature` headers (RSA/Ed25519), and evaluation of `Authentication-Results` (RFC 8601).
+- **Inherent Limitations:**
+  - **Does not prove real-world identity:** Anyone can register `evil-scam-corporation-portal.com` for \$10, configure perfect SPF, DKIM, and DMARC records, and achieve a 100% pass score.
+  - **Does not prove human provenance:** DKIM keys are almost universally deployed at the gateway/MTA level, not on the end-user's endpoint. A valid DKIM signature proves that the message traversed *some* server belonging to that domain; it does not prove *who* inside that domain authored it.
+  - **Vulnerable to DKIM Replay:** A valid DKIM signature on a benign message can be intercepted and re-broadcast to unauthorized recipients.
+  - **Breaks under forwarding:** SPF fails upon forwarding; DKIM fails if downstream mailing lists or intermediaries alter whitespace or add footers (mitigated only partially by ARC, RFC 8617).
+
+### Dimension 4: Organizational Verification
+- **Definition:** Cryptographic verification linking the sending domain to a verified, legally registered corporate, non-profit, or government entity vetted by an authoritative registration authority.
+- **Verification Mechanism:** Brand Indicators for Message Identification (BIMI) paired with Verified Mark Certificates (VMC) issued by authorized CAs (e.g., DigiCert, Entrust); Organization-Validated (OV) or Extended-Validation (EV) X.509 certificates; Decentralized Identifiers for Organizations (`did:web`).
+- **Inherent Limitations:**
+  - High financial and administrative barrier to entry; inaccessible to small businesses, open-source projects, community organizations, and private citizens.
+  - Verifies legal trademark ownership, not operational security. A multi-billion dollar enterprise with a valid VMC can still suffer an internal breach or account takeover.
+  - CA compromise or fraudulent issuance can allow unauthorized parties to obtain organizational validation.
+
+### Dimension 5: Individual Identity Verification
+- **Definition:** Cryptographic proof that a specific, identified individual human being authored or authorized the communication, validated against an authoritative identity registry, government identity system, or peer-verified web of trust.
+- **Verification Mechanism:** End-to-end digital signatures: S/MIME (RFC 8551) with Class 3/4 personal certificates; OpenPGP (RFC 4880 / RFC 9580); W3C Verifiable Credentials (VCs) representing certified professional or personal credentials signed by authorized issuers.
+- **Inherent Limitations:**
+  - **Key Management Friction:** Historically catastrophic user experience for private key storage, revocation, and certificate renewal.
+  - **Loss of Privacy:** Standard S/MIME and PGP expose the signer's full legal name and email address in the certificate payload, creating severe privacy and surveillance risks.
+  - **Endpoint Vulnerability:** If the user's workstation is compromised by malware, the private signing key can be coerced or exfiltrated, signing malicious emails with the user's authentic individual key.
+
+### Dimension 6: Message Authenticity
+- **Definition:** Mathematical certainty that the payload (headers, text body, attachments) delivered to the recipient is bit-for-bit identical to what was signed by the originating sender, and has not suffered transit tampering.
+- **Verification Mechanism:** DKIM body hash (`bh=`), S/MIME CMS/PKCS#7 signed data structures, OpenPGP clearsigned or detached signature verification.
+- **Inherent Limitations:**
+  - **A hash is not authenticity:** A standalone cryptographic hash (e.g., SHA-256) confirms that two byte sequences match; it provides zero information regarding *who* created the hash or *why* it was created.
+  - **Canonicalization Fragility:** Email canonicalization algorithms (`c=simple` or `c=relaxed`) struggle with character encoding translations, trailing whitespace stripping, and MIME re-encoding performed by benign gateways.
+  - **Authenticity does not equal safety:** A message can be 100% authentic (completely unmodified since signing) and simultaneously be an active extortion email, a devastating social engineering attack, or an infected zero-day malware delivery.
+
+### Dimension 7: Sender Trust
+- **Definition:** A dynamic, contextual assessment of the likelihood that the sender will communicate safely, responsibly, and without malice, derived from longitudinal interaction history, reputation aggregators, and social graph analysis.
+- **Verification Mechanism:** Historical communication graphs (have the parties corresponded safely before?), IP/domain reputation feeds (Spamhaus, DNSBL), behavioral baseline comparisons (is the language, timing, or request pattern typical?).
+- **Inherent Limitations:**
+  - **Susceptible to Account Takeover:** An adversary operating inside a compromised vendor account exploits high pre-existing sender trust.
+  - **First-Contact Penalty:** Inherently discriminates against legitimate new business contacts, new employees, whistleblowers, and public inquiries.
+  - **Model Drift and Poisoning:** Adversaries can conduct low-and-slow "reputation warming" by sending benign emails for months before launching an attack.
+
+### Dimension 8: Attribution During Investigations
+- **Definition:** The post-incident evidentiary capability to trace an email back to a specific physical entity, jurisdiction, host, or threat actor group with sufficient legal and technical certainty to support litigation or law enforcement prosecution.
+- **Verification Mechanism:** Multi-hop `Received:` header analysis, TLS certificate logging, ISP connection logs, external payment/registration trail auditing, forensic memory analysis, and lawful subpoena.
+- **Inherent Limitations:**
+  - **Strict Limits on Forensic Certainty:** Email headers can be forged upstream of the first trusted MTA. Public VPNs, Tor exit nodes, compromised proxy networks (residential botnets), and bulletproof hosting frequently terminate the technical attribution trail at an intermediate relay.
+  - **AI Cannot Identify Anonymous Authors:** Stylometric analysis and LLM-based linguistic profiling are probabilistic, non-unique, and highly susceptible to imitation, obfuscation, translation round-trips, and spoofing. AI stylometry CANNOT establish legal attribution on its own.
+  - **Jurisdictional Fragmentation:** Technical attribution dead-ends when logs reside in non-cooperative sovereign jurisdictions.
+
+---
+
+## 4. TrustMail Proposed Identity Assurance Levels (T-IAL)
+
+TrustMail adapts the NIST SP 800-63-3 framework into an explicit, multi-tiered Identity Assurance Level system specifically engineered for digital messaging:
+
+```
++===================================================================================================+
+| LEVEL       | LEVEL NAME                  | CRYPTOGRAPHIC & VERIFICATION REQUIREMENTS             |
++===================================================================================================+
+| T-IAL 0     | UNVERIFIED / ANONYMOUS      | - RFC 5322 Claimed Identity only.                     |
+|             |                             | - SPF/DKIM missing or failed.                         |
+|             |                             | - No proof of domain control or sender identity.      |
++-------------+-----------------------------+-------------------------------------------------------+
+| T-IAL 1     | INFRASTRUCTURE ASSURANCE    | - SPF Pass OR DKIM Pass (unaligned).                  |
+|             |                             | - Confirms originating server authorization only.     |
+|             |                             | - No DMARC alignment; sender identity unverified.     |
++-------------+-----------------------------+-------------------------------------------------------+
+| T-IAL 2     | DOMAIN-ALIGNED ASSURANCE    | - DMARC Pass (DKIM aligned AND/OR SPF aligned).       |
+|             |                             | - MTA-STS or DANE-verified transport.                 |
+|             |                             | - Confirms tenant/domain authorization.               |
++-------------+-----------------------------+-------------------------------------------------------+
+| T-IAL 3     | ORGANIZATIONAL ASSURANCE    | - All T-IAL 2 requirements.                           |
+|             |                             | - BIMI with Verified Mark Certificate (VMC) OR        |
+|             |                             |   Organizational W3C Verifiable Credential.           |
+|             |                             | - Confirms registered legal entity tenancy.           |
++-------------+-----------------------------+-------------------------------------------------------+
+| T-IAL 4     | INDIVIDUAL / END-TO-END     | - End-to-end cryptographic signature (S/MIME Class 3, |
+|             | VERIFIED ASSURANCE          |   OpenPGP with trusted fingerprint, or W3C VC         |
+|             |                             |   asserting verified human credential).               |
+|             |                             | - Payload integrity mathematically guaranteed.        |
++-------------+-----------------------------+-------------------------------------------------------+
+| T-IAL 4-P   | PRIVACY-PRESERVING HIGH     | - Cryptographic Zero-Knowledge Proof (ZKP) or         |
+| (Special)   | ASSURANCE                   |   selective disclosure credential (BBS+ signature).   |
+|             |                             | - Proves sender meets verified criteria (e.g. valid   |
+|             |                             |   employee, certified professional) without           |
+|             |                             |   revealing real-world identity.                      |
++===================================================================================================+
+```
+
+---
+
+## 5. Orthogonality in Action: The Evaluation Matrix
+
+To prevent the dangerous conflation of identity and safety, the TrustMail engine evaluates every email across a 4-tuple vector:
+
+$$\mathbf{V}_{\text{message}} = \begin{bmatrix} \text{Identity Assurance Level (T-IAL)} \\ \text{Message Authenticity Level (MAL)} \\ \text{Threat Severity Rating (TSR)} \\ \text{Sender Trust Index (STI)} \end{bmatrix}$$
+
+### Case Studies in Orthogonality
+
+```
++---------------------------------------------------------------------------------------------------+
+| Scenario: Compromised CFO Account (Account Takeover - BEC)                                        |
+| - T-IAL: Level 2 (DMARC Pass, Corporate Domain Aligned)                                           |
+| - MAL:   Level 2 (DKIM Signature Valid)                                                           |
+| - STI:   Level 4 (Historical High Trust, frequent communication)                                 |
+| - TSR:   CRITICAL (Deterministic Engine flags wire transfer change to unlisted foreign IBAN)      |
+| -> OUTCOME: QUARANTINE & MANDATORY SOC HUMAN REVIEW.                                              |
+|    High identity assurance and trust DO NOT override the critical threat score.                  |
++---------------------------------------------------------------------------------------------------+
+| Scenario: Corporate Whistleblower Submission                                                     |
+| - T-IAL: Level 0 or Level 4-P (Anonymous or Privacy-Preserving Proof of Employment)               |
+| - MAL:   Level 1 (Direct socket submission, uncorrupted body)                                     |
+| - STI:   Level 0 (Zero historical reputation, first contact)                                      |
+| - TSR:   LOW (Plaintext documentation, zero malicious links, zero malware, zero credential phishing)|
+| -> OUTCOME: DELIVER WITH CONTEXTUAL ADVISORY.                                                     |
+|    Lack of real-world identity DOES NOT trigger automatic malicious classification.              |
++---------------------------------------------------------------------------------------------------+
+```
+
+---
+
+## 6. Privacy-Preserving Verification Specifications
+
+Universal disclosure of personal identity creates severe human rights, privacy, and operational hazards:
+- Whistleblowers face retaliation.
+- Consumers face commercial profiling and surveillance.
+- Regulated professionals face doxxing.
+
+### Cryptographic Framework for T-IAL 4-P
+TrustMail incorporates Privacy-Preserving High Assurance via modern cryptographic credential structures:
+1. **Issuer Issuance:** A trusted organization (e.g., medical board, corporation, government agency) issues a W3C Verifiable Credential using a BBS+ signature or anonymous credential scheme (Idemix / ZK-SNARK).
+2. **Selective Disclosure & Zero-Knowledge Attestation:** When transmitting a message, the sender includes an HTTP-header-accessible or MIME-header-attached cryptographic proof:
+   - *Proves:* "The author of this message is an active, credentialed employee of Organization $X$."
+   - *Hides:* The author's name, employee ID, department, and direct email address.
+3. **Verification:** The TrustMail gateway mathematically validates the zero-knowledge proof against the issuer's public key (retrieved via DID resolution), establishing T-IAL 4-P without requiring identity disclosure.

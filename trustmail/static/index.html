@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrustMail — Understand Your Email</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-container">
+      <div class="brand">
+        <div class="logo-shield">TM</div>
+        <div>
+          <h1>TrustMail</h1>
+          <p class="subtitle">Understand your email before you act.</p>
+        </div>
+      </div>
+      <div class="header-meta">
+        <span class="badge badge-neutral">Local prototype</span>
+        <span class="badge badge-info">Explainable analysis</span>
+        <span class="badge badge-outline">1 MB email limit</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-layout">
+    <!-- Top System Banner: Mandatory Non-Equivalence & Safety Notice -->
+    <section class="safety-banner">
+      <div class="safety-content">
+        <strong>Important:</strong>
+        <span>An unfamiliar sender is not automatically dangerous, and a familiar sender is not automatically safe. TrustMail looks for warning signs; it cannot guarantee that an email is safe.</span>
+      </div>
+    </section>
+
+    <!-- Navigation Tabs -->
+    <nav class="view-tabs">
+      <button class="tab-btn active" id="tab-btn-analyze" onclick="switchView('analyze')">Check an email</button>
+      <button class="tab-btn" id="tab-btn-incidents" onclick="switchView('incidents')">Previous checks (<span id="incident-count">0</span>)</button>
+    </nav>
+
+    <!-- VIEW 1: INTAKE & ANALYSIS -->
+    <section id="view-analyze" class="view-content active">
+      <div class="grid-2col">
+        <!-- Submission Panel -->
+        <div class="card intake-card">
+          <div class="card-header">
+            <h2>Check an email</h2>
+            <span class="badge badge-neutral">Start here</span>
+          </div>
+
+          <div class="intake-tabs">
+            <button class="subtab-btn active" id="subtab-paste" onclick="switchIntakeMode('paste')">Paste email text</button>
+            <button class="subtab-btn" id="subtab-upload" onclick="switchIntakeMode('upload')">Upload an email file</button>
+          </div>
+
+          <!-- Paste Mode -->
+          <div id="intake-paste-box" class="intake-mode-box">
+            <label for="raw-email-input" class="form-label">Paste the email, including its sender and message text:</label>
+            <textarea id="raw-email-input" class="code-editor" placeholder="Paste the email headers and message here…" ></textarea>
+            <div class="char-counter">
+              <span id="byte-counter">0 bytes / 1,048,576 bytes limit</span>
+            </div>
+          </div>
+
+          <!-- Upload Mode -->
+          <div id="intake-upload-box" class="intake-mode-box hidden">
+            <label class="form-label">Choose an email file (.eml):</label>
+            <div class="drop-zone" id="drop-zone">
+              <input type="file" id="file-input" accept=".eml,message/rfc822,text/plain" style="display:none;">
+              <p>Choose a file or drag an <code>.eml</code> email file here</p>
+              <div id="selected-file-info" class="file-info hidden"></div>
+            </div>
+          </div>
+
+          <!-- Retention Opt-In Toggle -->
+          <div class="retention-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="retain-evidence-checkbox">
+              <span class="checkbox-custom"></span>
+              <span class="checkbox-text">
+                <strong>Keep a copy for later integrity checks (optional)</strong>
+                <small>Off by default. If enabled, the original email is saved locally so its bytes can be checked later. Email content may contain private information.</small>
+              </span>
+            </label>
+          </div>
+
+          <!-- Quick Sample Buttons -->
+          <div class="sample-actions">
+            <span class="sample-label">Try a sample:</span>
+            <button type="button" class="btn-sample" onclick="loadSample('bec_spoof')">Impersonation attempt</button>
+            <button type="button" class="btn-sample" onclick="loadSample('credential_phish')">Password scam</button>
+            <button type="button" class="btn-sample" onclick="loadSample('malformed_headers')">Malformed email</button>
+            <button type="button" class="btn-sample" onclick="loadSample('benign_newsletter')">Ordinary newsletter</button>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="btn-submit-analyze" class="btn btn-primary" onclick="submitAnalysis()">
+              Check this email
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="clearIntake()">Clear</button>
+          </div>
+
+          <div id="submit-error" class="alert-box alert-error hidden"></div>
+        </div>
+
+        <!-- System Overview & Instructions -->
+        <div class="card guide-card">
+          <div class="card-header">
+            <h2>How TrustMail works</h2>
+          </div>
+          <details class="guide-details">
+            <summary>Learn what TrustMail checks</summary>
+          <div class="guide-content">
+            <p>TrustMail checks different aspects separately instead of combining everything into one “safe” score.</p>
+            <ul class="dimension-list">
+              <li><strong>Sender identity:</strong> What the sender claims, and what identity evidence is available.</li>
+              <li><strong>Message authenticity:</strong> What can be established about the message’s origin and integrity.</li>
+              <li><strong>Threat level:</strong> Warning signs such as payment redirection, password requests or pressure tactics.</li>
+              <li><strong>Sender history:</strong> What this local prototype knows about the sender from available history.</li>
+            </ul>
+            <div class="alert-box alert-info">
+              <strong>Human review:</strong> Serious or ambiguous findings may need a person to investigate. TrustMail does not make the final decision for you.
+            </div>
+          </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- RESULTS SECTION (POPULATED AFTER ANALYSIS) -->
+      <div id="results-container" class="results-container hidden">
+        <hr class="section-divider">
+
+        <!-- Assessment Header -->
+        <div class="assessment-header">
+          <div>
+            <h2 id="res-subject">(Subject)</h2>
+            <p class="meta-line">
+              Incident ID: <code id="res-incident-id">-</code> |
+              Intake Time: <span id="res-timestamp">-</span> |
+              SHA-256 Digest: <code id="res-hash" class="hash-code">-</code>
+            </p>
+          </div>
+          <div class="review-status-badge-container">
+            <span id="res-review-badge" class="badge badge-warning">Review Status</span>
+          </div>
+        </div>
+
+        <!-- Advanced assessment dimensions, collapsed by default for nontechnical users -->
+        <details class="advanced-disclosure">
+          <summary>Advanced analysis: identity, authenticity, threat level and sender history</summary>
+        <div class="grid-4col">
+          <!-- Dimension 1: Identity Assurance -->
+          <div class="card dim-card">
+            <div class="dim-badge-row">
+              <span class="dim-label">DIMENSION 1</span>
+              <span id="dim-ial-level" class="badge badge-dim">T-IAL 0</span>
+            </div>
+            <h3 id="dim-ial-title">Identity Assurance</h3>
+            <p id="dim-ial-desc" class="dim-desc">-</p>
+            <div class="dim-rationale">
+              <strong>Rationale:</strong> <span id="dim-ial-rationale">-</span>
+            </div>
+            <div id="dim-ial-findings" class="dimension-findings"></div>
+          </div>
+
+          <!-- Dimension 2: Message Authenticity -->
+          <div class="card dim-card">
+            <div class="dim-badge-row">
+              <span class="dim-label">DIMENSION 2</span>
+              <span id="dim-mal-level" class="badge badge-dim">MAL 1</span>
+            </div>
+            <h3 id="dim-mal-title">Message Authenticity</h3>
+            <p id="dim-mal-desc" class="dim-desc">-</p>
+            <div class="dim-rationale">
+              <strong>Rationale:</strong> <span id="dim-mal-rationale">-</span>
+            </div>
+            <div id="dim-mal-findings" class="dimension-findings"></div>
+          </div>
+
+          <!-- Dimension 3: Threat Severity -->
+          <div class="card dim-card">
+            <div class="dim-badge-row">
+              <span class="dim-label">DIMENSION 3</span>
+              <span id="dim-tsr-level" class="badge badge-dim">TSR</span>
+            </div>
+            <h3 id="dim-tsr-title">Threat Assessment</h3>
+            <p id="dim-tsr-desc" class="dim-desc">-</p>
+            <div class="dim-rationale">
+              <strong>Rationale:</strong> <span id="dim-tsr-rationale">-</span>
+            </div>
+            <div id="dim-tsr-findings" class="dimension-findings"></div>
+          </div>
+
+          <!-- Dimension 4: Sender Trust -->
+          <div class="card dim-card">
+            <div class="dim-badge-row">
+              <span class="dim-label">DIMENSION 4</span>
+              <span id="dim-sti-level" class="badge badge-dim">STI 0</span>
+            </div>
+            <h3 id="dim-sti-title">Sender Trust</h3>
+            <p id="dim-sti-desc" class="dim-desc">-</p>
+            <div class="dim-rationale">
+              <strong>Rationale:</strong> <span id="dim-sti-rationale">-</span>
+            </div>
+            <div id="dim-sti-findings" class="dimension-findings"></div>
+          </div>
+        </div>
+
+        </details>
+
+        <!-- Decision Support & Human Review Panel -->
+        <div class="card triage-card">
+          <div class="card-header">
+            <h3>What should happen next?</h3>
+            <span id="triage-review-flag" class="badge badge-alert">Review may be needed</span>
+          </div>
+          <div class="triage-body">
+            <div class="triage-reasons" id="triage-reasons-box">
+              <strong>Why this may need attention:</strong>
+              <ul id="triage-reasons-list"></ul>
+            </div>
+            <div class="triage-actions">
+              <div class="form-row">
+                <label for="review-status-select" class="form-label">Review status:</label>
+                <select id="review-status-select" class="form-select">
+                  <option value="PENDING">PENDING (Awaiting Review)</option>
+                  <option value="UNDER_REVIEW">UNDER_REVIEW (Active Investigation)</option>
+                  <option value="ESCALATED">ESCALATED (Tier-2 SOC / Incident Response)</option>
+                  <option value="DISMISSED">DISMISSED (Human Verified as Benign)</option>
+                  <option value="CONFIRMED_THREAT">CONFIRMED_THREAT (Actionable Malice)</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="analyst-notes-input" class="form-label">Review notes (optional):</label>
+                <textarea id="analyst-notes-input" class="form-textarea" placeholder="What did you check? What decision did you make?"></textarea>
+              </div>
+              <div class="triage-buttons">
+                <button type="button" class="btn btn-primary" onclick="submitReviewUpdate()">Save review</button>
+                <button type="button" id="btn-verify-tamper" class="btn btn-secondary" onclick="verifyTamperIntegrity()">Check saved email integrity</button>
+              </div>
+              <div id="review-update-result" class="alert-box hidden"></div>
+              <div id="tamper-verify-result" class="alert-box hidden"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced findings are available when needed -->
+        <details class="advanced-disclosure">
+          <summary>View detailed technical findings and evidence</summary>
+        <!-- Epistemological Partitioning Tabs -->
+        <div class="card findings-card">
+          <div class="card-header">
+            <h3>Detailed findings (advanced)</h3>
+            <div class="findings-filter">
+              <button class="filter-btn active" onclick="filterFindings('all')">All Findings (<span id="count-all">0</span>)</button>
+              <button class="filter-btn" onclick="filterFindings('VERIFIED_FACT')">Verified Facts (<span id="count-facts">0</span>)</button>
+              <button class="filter-btn" onclick="filterFindings('UNVERIFIED_CLAIM')">Unverified Claims (<span id="count-claims">0</span>)</button>
+              <button class="filter-btn" onclick="filterFindings('HEURISTIC_FINDING')">Heuristics (<span id="count-heuristics">0</span>)</button>
+              <button class="filter-btn" onclick="filterFindings('UNKNOWN_INFORMATION')">Unknowns (<span id="count-unknowns">0</span>)</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Dimension</th>
+                  <th>Category</th>
+                  <th>Severity</th>
+                  <th>Finding & Description</th>
+                  <th>Evidence Snippet</th>
+                  <th>Technical Limitations</th>
+                </tr>
+              </thead>
+              <tbody id="findings-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        </details>
+
+        <!-- Audit Trail Log for this Incident -->
+        <details class="advanced-disclosure">
+          <summary>View incident activity history</summary>
+        <div class="card audit-card">
+          <div class="card-header">
+            <h3>Incident activity history</h3>
+          </div>
+          <div id="audit-trail-list" class="audit-list"></div>
+        </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- VIEW 2: INCIDENT HISTORY LOG -->
+    <section id="view-incidents" class="view-content hidden">
+      <div class="card">
+        <div class="card-header">
+          <h2>Previous email checks</h2>
+          <button class="btn btn-secondary" onclick="loadIncidentsList()">Refresh list</button>
+        </div>
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Created (UTC)</th>
+                <th>Claimed Sender</th>
+                <th>Subject</th>
+                <th>T-IAL</th>
+                <th>MAL</th>
+                <th>TSR</th>
+                <th>STI</th>
+                <th>Review State</th>
+                <th>Evidence</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="incidents-table-body">
+              <tr><td colspan="10" style="text-align:center;">No incidents recorded yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-container">
+      <p>TrustMail prototype · Local email assessment tool.</p>
+      <p class="disclaimer-text">TrustMail is a prototype, not a guarantee of safety or a certified forensic tool. Results depend on the evidence available.</p>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

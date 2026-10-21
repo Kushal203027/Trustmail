@@ -1,0 +1,37 @@
+# Python environments and generated caches
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+.mypy_cache/
+**/.mypy_cache/
+
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Local application data can contain private email metadata and evidence
+/data/
+/data/evidence/
+*.db
+*.sqlite
+*.sqlite3
+*.eml
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Logs and temporary output
+*.log
+*.tmp
+*.bak
+
+# Generated archives and OS metadata
+*.zip
+*.zip.zip
+.DS_Store
+Thumbs.db
