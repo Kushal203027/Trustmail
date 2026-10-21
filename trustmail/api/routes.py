@@ -77,6 +77,11 @@ async def analyze_email_text(payload: AnalyzeTextRequest):
     Enforces the 1 MB size limit, parses defensively, and returns the multi-dimensional assessment.
     """
     raw_bytes = payload.raw_email.encode("utf-8", errors="replace")
+    if not raw_bytes.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email input is empty. Paste raw RFC 5322 email text to continue.",
+        )
     if len(raw_bytes) > MAX_INPUT_BYTES:
         raise HTTPException(
             status_code=413,
@@ -139,6 +144,11 @@ async def analyze_email_file(
     Enforces streaming size validation up to 1 MB.
     """
     raw_bytes = await read_limited_upload(file)
+    if not raw_bytes.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded email file is empty. Choose a non-empty .eml file to continue.",
+        )
 
     incident_id = str(uuid.uuid4())
 

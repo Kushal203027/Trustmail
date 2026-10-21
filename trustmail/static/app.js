@@ -10,6 +10,7 @@ let currentIncidentId = null;
 let currentFindingsFilter = "all";
 let uploadedFileObject = null;
 let demoMode = false;
+let statusConfirmed = false;
 
 // Build text nodes with textContent so untrusted email/API values stay inert.
 function appendText(parent, tagName, value, className = "") {
@@ -165,10 +166,25 @@ async function initializeWorkspace() {
     const response = await fetch("/api/status");
     if (!response.ok) throw new Error("Application status is unavailable.");
     const status = await response.json();
+    if (typeof status.demo_mode !== "boolean" || status.history_enabled !== !status.demo_mode) {
+      throw new Error("Application capabilities are incomplete.");
+    }
     demoMode = status.demo_mode === true;
+    statusConfirmed = true;
   } catch (_error) {
-    // Fail closed in the UI if it cannot confirm whether shared storage is enabled.
-    demoMode = true;
+    // Do not promise ephemeral processing when the server's actual mode is unknown.
+    const banner = document.getElementById("demo-mode-banner");
+    banner.textContent = "TrustMail cannot confirm its privacy mode. Email analysis and shared history are disabled. Reload this page to try again.";
+    banner.classList.remove("hidden");
+    document.getElementById("input-help").textContent = "Analysis is disabled until TrustMail confirms whether submitted email will be saved.";
+    document.getElementById("retention-option").classList.add("hidden");
+    document.getElementById("triage-actions").classList.add("hidden");
+    document.getElementById("demo-review-note").textContent = "Review decisions and integrity checks are unavailable until the server's privacy mode can be confirmed.";
+    document.getElementById("demo-review-note").classList.remove("hidden");
+    document.getElementById("audit-trail-disclosure").classList.add("hidden");
+    document.getElementById("tab-btn-incidents").classList.add("hidden");
+    document.getElementById("btn-submit-analyze").disabled = true;
+    return;
   }
 
   if (demoMode) {
@@ -208,6 +224,7 @@ function handleFileSelection(file) {
 
 // Navigation View Switching
 function switchView(viewName) {
+  if (!statusConfirmed && viewName === "incidents") return;
   const onAnalyze = viewName === "analyze";
   document.getElementById("tab-btn-analyze").classList.toggle("active", onAnalyze);
   document.getElementById("tab-btn-incidents").classList.toggle("active", !onAnalyze);
@@ -269,6 +286,12 @@ async function submitAnalysis() {
   const errBox = document.getElementById("submit-error");
   errBox.classList.add("hidden");
   errBox.textContent = "";
+
+  if (!statusConfirmed) {
+    errBox.textContent = "Analysis is unavailable until TrustMail confirms its privacy mode. Reload the page to try again.";
+    errBox.classList.remove("hidden");
+    return;
+  }
 
   const retainEvidence = document.getElementById("retain-evidence-checkbox").checked;
   const isUploadMode = document.getElementById("subtab-upload").classList.contains("active");

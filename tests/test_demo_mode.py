@@ -67,6 +67,15 @@ def test_demo_mode_upload_does_not_retain_message_or_metadata(client, monkeypatc
 
 def test_demo_mode_blocks_shared_incident_and_review_endpoints(client, monkeypatch):
     monkeypatch.setattr(routes, "DEMO_MODE", True)
+
+    def storage_must_not_be_reached(*_args, **_kwargs):
+        pytest.fail("demo mode must block shared-record access before reading or writing storage")
+
+    monkeypatch.setattr(routes, "list_incidents", storage_must_not_be_reached)
+    monkeypatch.setattr(routes, "get_incident", storage_must_not_be_reached)
+    monkeypatch.setattr(routes, "update_review_status", storage_must_not_be_reached)
+    monkeypatch.setattr(routes, "verify_stored_evidence_integrity", storage_must_not_be_reached)
+    monkeypatch.setattr(routes, "log_audit_event", storage_must_not_be_reached)
     requests = [
         ("get", "/api/incidents", None),
         ("get", "/api/incidents/a-known-or-guessed-id", None),
@@ -99,6 +108,15 @@ def test_frontend_explains_demo_limits_and_uses_server_error_message():
     assert 'id="demo-mode-banner"' in index_html
     assert 'id="demo-review-note"' in index_html
     assert "innerHTML" not in app_js
+
+
+def test_frontend_does_not_claim_ephemeral_processing_when_status_is_unknown():
+    app_js = (ROOT / "trustmail" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert "let statusConfirmed = false" in app_js
+    assert "TrustMail cannot confirm its privacy mode" in app_js
+    assert "Analysis is disabled until TrustMail confirms" in app_js
+    assert "if (!statusConfirmed)" in app_js
 
 
 def test_concurrent_demo_analyses_return_their_own_synthetic_results(monkeypatch):

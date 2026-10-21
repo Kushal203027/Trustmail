@@ -1,7 +1,8 @@
 """
 TrustMail: Deterministic Threat Analyzer.
 Detects explainable heuristic indicators: display name spoofing, suspicious URLs,
-financial/credential urgency, coercive language, malformed headers, and risky attachments.
+financial/credential urgency, explicit threat-like wording, coercive language,
+malformed headers, and risky attachments.
 Enforces the core rule: Keyword detection does NOT prove intent or maliciousness,
 and absence of indicators does NOT prove a message is harmless.
 """
@@ -94,6 +95,71 @@ COERCIVE_PATTERNS = [
     (r"\bfailure\s+to\s+comply\b", "Coercive Compliance Warning"),
     (r"\bdo\s+not\s+contact\s+anyone\b", "Isolation Directive (Secrecy Command)"),
 ]
+
+# Narrow first-person threat language rules intended to limit mentions in news,
+# discussion, and preparedness messages. These match words only, not credibility.
+EXPLICIT_THREAT_PATTERNS = (
+    re.compile(
+        r"\b(?:i|we)\s+(?:have\s+)?(?:planted|placed|left|hidden)\s+(?:a\s+)?"
+        r"(?:bomb|explosive(?:\s+device)?)(?:\s+(?:at|in|near)\s+[^.!?\r\n]{1,100})?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:i|we)\s+(?:will|am going to|intend to|plan to)\s+"
+        r"(?:detonate|set off|explode)\s+(?:a\s+)?(?:bomb|explosive(?:\s+device)?)"
+        r"(?:\s+(?:at|in|near)\s+[^.!?\r\n]{1,100})?",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:i|we)\s+(?:will|am going to|intend to|plan to)\s+"
+        r"(?:kill|hurt|harm|shoot|stab)\s+(?:you|him|her|them|someone|people|students|staff|everyone)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:i|we)\s+(?:will|am going to|intend to|plan to)\s+attack\s+"
+        r"(?:you|the\s+(?:school|university|campus|office|building))\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:i|we)\s+(?:will|am going to|intend to|plan to)\s+bomb\s+"
+        r"(?:the\s+)?(?:school|university|campus|office|building)\b",
+        re.IGNORECASE,
+    ),
+)
+MAX_EXPLICIT_THREAT_OBSERVATIONS = 20
+
+
+def _explicit_threat_observations(parsed: ParsedEmail) -> List[Observation]:
+    """Return exact parser-text matches with offsets in the field they came from."""
+    observations: List[Observation] = []
+    seen = set()
+    educational_mention = re.compile(
+        r"\b(?:phrase|example|quote|quotation|quoted wording|reported wording)\b[^.!?\r\n]{0,100}$",
+        re.IGNORECASE,
+    )
+    for source, text in (("parsed subject", parsed.subject), ("parsed body_text", parsed.body_text)):
+        for pattern in EXPLICIT_THREAT_PATTERNS:
+            for match in pattern.finditer(text):
+                preceding_text = text[max(0, match.start() - 120):match.start()]
+                if educational_mention.search(preceding_text):
+                    continue
+                key = (source, match.start(), match.end())
+                if key in seen:
+                    continue
+                seen.add(key)
+                observations.append(Observation(
+                    type="EXPLICIT_THREAT_LANGUAGE",
+                    value=match.group(0),
+                    source_location=SourceLocation(
+                        source=source,
+                        available=True,
+                        start=match.start(),
+                        end=match.end(),
+                    ),
+                ))
+                if len(observations) >= MAX_EXPLICIT_THREAT_OBSERVATIONS:
+                    return observations
+    return observations
 
 
 def analyze_threats(parsed: ParsedEmail) -> Tuple[DimensionScore, List[Finding], bool, List[str]]:
@@ -247,7 +313,36 @@ def analyze_threats(parsed: ParsedEmail) -> Tuple[DimensionScore, List[Finding],
             continue
 
     # ---------------------------------------------------------
-    # 3. Financial and Credential Urgency Patterns
+    # 3. Explicit Physical-Harm / Explosive Threat Language
+    threat_observations = _explicit_threat_observations(parsed)
+    if threat_observations:
+        matched_text = " | ".join(f'"{observation.value}"' for observation in threat_observations)
+        findings.append(Finding(
+            id="ALERT-THREAT-EXPLICIT-PHYSICAL-THREAT",
+            dimension="THREAT",
+            category=FindingCategory.HEURISTIC_FINDING,
+            severity=Severity.HIGH,
+            title="Explicit Threat-Like Language Detected",
+            description=(
+                "The message contains first-person wording describing physical harm, an attack, or an explosive. "
+                "This language warrants urgent human review."
+            ),
+            evidence=f"Observed text: {matched_text}",
+            limitations=(
+                "This deterministic rule identifies wording only. It cannot establish sender identity, intent, "
+                "credibility, or whether a weapon or explosive device exists. At most 20 matching phrases are listed."
+            ),
+            observations=threat_observations,
+            review_guidance=(
+                "Treat the wording as urgent: notify the appropriate safety or security team and follow local "
+                "emergency procedures. Do not confront the sender or infer that a device exists from this result."
+            ),
+        ))
+        human_review_reasons.append(
+            "Explicit threat-like physical-harm or explosive wording detected; urgent human review is recommended."
+        )
+
+    # 4. Financial and Credential Urgency Patterns
     # ---------------------------------------------------------
     full_content = (parsed.subject + "\n" + parsed.body_text).lower()
 
@@ -284,7 +379,7 @@ def analyze_threats(parsed: ParsedEmail) -> Tuple[DimensionScore, List[Finding],
             human_review_reasons.append(f"Credential solicitation indicator: {title}.")
 
     # ---------------------------------------------------------
-    # 4. Threatening and Coercive Language
+    # 5. Threatening and Coercive Language
     # ---------------------------------------------------------
     for pattern, title in COERCIVE_PATTERNS:
         match = re.search(pattern, full_content, re.IGNORECASE)
@@ -303,7 +398,7 @@ def analyze_threats(parsed: ParsedEmail) -> Tuple[DimensionScore, List[Finding],
             human_review_reasons.append(f"Coercive urgency pattern: {title}.")
 
     # ---------------------------------------------------------
-    # 5. Malformed / Conflicting Headers & Attachments
+    # 6. Malformed / Conflicting Headers & Attachments
     # ---------------------------------------------------------
     if len(parsed.from_headers) > 1:
         findings.append(Finding(
@@ -351,7 +446,7 @@ def analyze_threats(parsed: ParsedEmail) -> Tuple[DimensionScore, List[Finding],
                 human_review_reasons.append(f"Potentially executable or script attachment detected: {fname}.")
 
     # ---------------------------------------------------------
-    # 6. Overall Severity and Review Determination
+    # 7. Overall Severity and Review Determination
     # ---------------------------------------------------------
     severities = [f.severity for f in findings]
 
@@ -363,7 +458,7 @@ def analyze_threats(parsed: ParsedEmail) -> Tuple[DimensionScore, List[Finding],
     elif Severity.HIGH in severities:
         overall_level = "HIGH"
         title = "High Severity Threat Indicators Detected"
-        desc = "Substantial indicators of credential phishing, display-name spoofing, or financial fraud."
+        desc = "High-severity indicators include explicit threat-like wording, credential phishing, display-name spoofing, or financial fraud."
         review_required = True
     elif Severity.MEDIUM in severities:
         overall_level = "MEDIUM"

@@ -104,12 +104,12 @@ def parse_email_defensively(raw_bytes: bytes) -> ParsedEmail:
     # Parse message with default modern policy (handles UTF-8, unfolds headers)
     try:
         msg = email.message_from_bytes(raw_bytes, policy=email.policy.default)
-    except Exception as e:
-        warnings.append(f"Primary email parser raised exception: {str(e)}; falling back to compat32 policy.")
+    except Exception:
+        warnings.append("Primary email parser failed; falling back to compat32 policy.")
         try:
             msg = email.message_from_bytes(raw_bytes, policy=email.policy.compat32)
-        except Exception as e2:
-            warnings.append(f"Compat parser failed: {str(e2)}. Message structure severely damaged.")
+        except Exception:
+            warnings.append("Compat parser failed. Message structure is severely damaged.")
             return ParsedEmail(
                 raw_hash=evidence_hash,
                 byte_size=byte_size,
@@ -137,8 +137,8 @@ def parse_email_defensively(raw_bytes: bytes) -> ParsedEmail:
                 dkim_headers.append(str_val)
             elif k_lower == "received":
                 received_headers.append(str_val)
-    except Exception as e:
-        warnings.append(f"Header iteration anomaly: {str(e)}")
+    except Exception:
+        warnings.append("Header iteration failed; some headers may be unavailable.")
 
     # Check for RFC 5322 §3.6 violation: Multiple From headers
     if len(from_headers) > 1:
@@ -215,16 +215,16 @@ def parse_email_defensively(raw_bytes: bytes) -> ParsedEmail:
                             text_bytes = part.get_payload(decode=True)
                             if text_bytes:
                                 body_text_parts.append(text_bytes.decode(charset, errors="replace"))
-                        except Exception as e:
-                            warnings.append(f"Plaintext decoding issue: {str(e)}")
+                        except Exception:
+                            warnings.append("Plaintext decoding failed for a message part.")
                     elif content_type == "text/html":
                         try:
                             charset = part.get_content_charset() or "utf-8"
                             html_bytes = part.get_payload(decode=True)
                             if html_bytes:
                                 body_html_parts.append(html_bytes.decode(charset, errors="replace"))
-                        except Exception as e:
-                            warnings.append(f"HTML decoding issue: {str(e)}")
+                        except Exception:
+                            warnings.append("HTML decoding failed for a message part.")
         else:
             # Single-part message
             content_type = msg.get_content_type()
@@ -237,10 +237,10 @@ def parse_email_defensively(raw_bytes: bytes) -> ParsedEmail:
                         body_html_parts.append(decoded_str)
                     else:
                         body_text_parts.append(decoded_str)
-            except Exception as e:
-                warnings.append(f"Single-part payload decoding issue: {str(e)}")
-    except Exception as e:
-        warnings.append(f"MIME tree traversal error: {str(e)}")
+            except Exception:
+                warnings.append("Single-part payload decoding failed.")
+    except Exception:
+        warnings.append("MIME tree traversal failed; extracted content may be incomplete.")
 
     full_body_text = "\n".join(body_text_parts)
     full_html = "\n".join(body_html_parts)
