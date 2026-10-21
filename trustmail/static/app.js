@@ -1,5 +1,5 @@
 /**
- * TrustMail: Cybersecurity Dashboard Frontend Controller.
+ * TrustMail: Email assessment workspace controller.
  * Implements strict XSS defense, multi-dimensional assessment rendering,
  * and human-in-the-loop review interactions.
  */
@@ -84,9 +84,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const bytes = new TextEncoder().encode(rawInput.value).length;
       byteCounter.textContent = `${bytes.toLocaleString()} bytes / 1,048,576 bytes limit (1 MB)`;
       if (bytes > 1048576) {
-        byteCounter.style.color = "#dc2626";
+        byteCounter.classList.add("over-limit");
       } else {
-        byteCounter.style.color = "#6b7280";
+        byteCounter.classList.remove("over-limit");
       }
     });
   }
@@ -96,17 +96,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const fileInput = document.getElementById("file-input");
 
   if (dropZone && fileInput) {
-    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("click", (event) => {
+      if (event.target !== fileInput) fileInput.click();
+    });
+    dropZone.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        fileInput.click();
+      }
+    });
     dropZone.addEventListener("dragover", (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = "#3b82f6";
+      dropZone.classList.add("drag-active");
     });
     dropZone.addEventListener("dragleave", () => {
-      dropZone.style.borderColor = "var(--border-color)";
+      dropZone.classList.remove("drag-active");
     });
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
-      dropZone.style.borderColor = "var(--border-color)";
+      dropZone.classList.remove("drag-active");
       if (e.dataTransfer.files.length > 0) {
         handleFileSelection(e.dataTransfer.files[0]);
       }
@@ -133,11 +141,15 @@ function handleFileSelection(file) {
 
 // Navigation View Switching
 function switchView(viewName) {
-  document.getElementById("tab-btn-analyze").classList.toggle("active", viewName === "analyze");
-  document.getElementById("tab-btn-incidents").classList.toggle("active", viewName === "incidents");
+  const onAnalyze = viewName === "analyze";
+  document.getElementById("tab-btn-analyze").classList.toggle("active", onAnalyze);
+  document.getElementById("tab-btn-incidents").classList.toggle("active", !onAnalyze);
+  document.getElementById("tab-btn-analyze").toggleAttribute("aria-current", onAnalyze);
+  document.getElementById("tab-btn-incidents").toggleAttribute("aria-current", !onAnalyze);
 
-  document.getElementById("view-analyze").classList.toggle("hidden", viewName !== "analyze");
-  document.getElementById("view-incidents").classList.toggle("hidden", viewName !== "incidents");
+  document.getElementById("view-analyze").classList.toggle("hidden", !onAnalyze);
+  document.getElementById("view-incidents").classList.toggle("hidden", onAnalyze);
+  document.getElementById("page-title").textContent = onAnalyze ? "Check an email" : "Incident history";
 
   if (viewName === "incidents") {
     loadIncidentsList();
@@ -148,6 +160,8 @@ function switchView(viewName) {
 function switchIntakeMode(mode) {
   document.getElementById("subtab-paste").classList.toggle("active", mode === "paste");
   document.getElementById("subtab-upload").classList.toggle("active", mode === "upload");
+  document.getElementById("subtab-paste").setAttribute("aria-selected", String(mode === "paste"));
+  document.getElementById("subtab-upload").setAttribute("aria-selected", String(mode === "upload"));
 
   document.getElementById("intake-paste-box").classList.toggle("hidden", mode !== "paste");
   document.getElementById("intake-upload-box").classList.toggle("hidden", mode !== "upload");
@@ -187,7 +201,9 @@ async function submitAnalysis() {
 
   const btn = document.getElementById("btn-submit-analyze");
   btn.disabled = true;
-  btn.textContent = "Executing Defensive Assessment...";
+  btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  btn.textContent = "Checking email…";
 
   try {
     let response;
@@ -233,7 +249,8 @@ async function submitAnalysis() {
     errBox.classList.remove("hidden");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Run Deterministic Security Assessment";
+    btn.removeAttribute("aria-busy");
+    btn.innerHTML = '<span aria-hidden="true">◉</span> Check this email';
   }
 }
 
@@ -250,7 +267,7 @@ function renderAssessment(data) {
     ? `Subject: ${data.subject}` 
     : "Subject: (No Subject)";
   document.getElementById("res-incident-id").textContent = data.incident_id;
-  document.getElementById("res-timestamp").textContent = new Date(data.timestamp).toUTCString();
+  document.getElementById("res-timestamp").textContent = data.timestamp ? new Date(data.timestamp).toUTCString() : "Unavailable";
   document.getElementById("res-hash").textContent = data.evidence_hash;
 
   // Review Badge
@@ -305,7 +322,7 @@ function renderAssessment(data) {
       reasonsList.appendChild(li);
     });
   } else {
-    triageFlag.textContent = "AUTOMATED REVIEW COMPLETE (LOW DETECTED SIGNALS)";
+    triageFlag.textContent = "No review required by current rules";
     triageFlag.className = "badge badge-neutral";
     reasonsBox.classList.add("hidden");
   }
@@ -392,10 +409,13 @@ function filterFindings(category) {
 
 function renderFindingsTable(findings) {
   const tbody = document.getElementById("findings-table-body");
-  tbody.innerHTML = "";
+  tbody.replaceChildren();
 
   if (!findings || findings.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-muted);">No findings in this category.</td></tr>';
+    const row = document.createElement("tr");
+    row.className = "empty-row";
+    row.innerHTML = '<td colspan="4">No findings in this category.</td>';
+    tbody.appendChild(row);
     return;
   }
 
@@ -409,16 +429,16 @@ function renderFindingsTable(findings) {
     else if (f.category === "UNKNOWN_INFORMATION") catClass = "cat-unknown";
 
     tr.innerHTML = `
-      <td><span class="badge badge-dim">${escapeHtml(f.dimension)}</span></td>
-      <td><span class="badge ${catClass}">${escapeHtml(f.category)}</span></td>
-      <td><span class="badge sev-badge-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</span></td>
+      <td>
+        <span class="badge badge-dim">${escapeHtml(f.dimension)}</span><br><span class="badge ${catClass}">${escapeHtml(f.category)}</span> <span class="badge sev-badge-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</span>
+      </td>
       <td>
         <strong>${escapeHtml(f.title)}</strong>
         <p style="color: var(--text-secondary); margin-top: 4px;">${escapeHtml(f.description)}</p>
         <p class="ledger-reference"><strong>Rule/reference:</strong> ${escapeHtml(f.id)}</p>
       </td>
       <td>
-        <code class="evidence-code">${escapeHtml(f.evidence)}</code>
+        ${f.evidence ? `<code class="evidence-code">${escapeHtml(f.evidence)}</code>` : '<span class="limitations-text">No evidence snippet recorded.</span>'}
         ${(f.observations || []).map(observation => `
           <p class="ledger-observation"><strong>Observed (${escapeHtml(observation.type)}):</strong> ${escapeHtml(observation.value)}</p>
           <p class="ledger-location">${observation.source_location && observation.source_location.available
@@ -426,9 +446,8 @@ function renderFindingsTable(findings) {
             : `Source location unavailable: ${escapeHtml(observation.source_location?.unavailable_reason || "No precise source location was recorded.")}`}</p>
         `).join("")}
         ${f.observations && f.observations.length ? '<p class="ledger-interpretation"><strong>Interpretation:</strong> The rule flagged this observation as suspicious; this is a heuristic indicator, not proof of malicious intent.</p>' : ""}
-        ${f.review_guidance ? `<p class="ledger-review"><strong>Review next:</strong> ${escapeHtml(f.review_guidance)}</p>` : ""}
       </td>
-      <td><span class="limitations-text">${escapeHtml(f.limitations)}</span></td>
+      <td><span class="limitations-text">${escapeHtml(f.limitations || "No specific limitation recorded.")}</span>${f.review_guidance ? `<p class="ledger-review"><strong>Review next:</strong> ${escapeHtml(f.review_guidance)}</p>` : ""}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -512,7 +531,7 @@ async function verifyTamperIntegrity() {
 async function renderAuditTrail(incidentId) {
   const container = document.getElementById("audit-trail-list");
   try {
-    const res = await fetch(`/api/incidents/${incidentId}`);
+    const res = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}`);
     if (!res.ok) return;
     const incident = await res.json();
 
@@ -543,17 +562,22 @@ async function renderAuditTrail(incidentId) {
 async function loadIncidentsList() {
   const tbody = document.getElementById("incidents-table-body");
   const countEl = document.getElementById("incident-count");
+  const errorBox = document.getElementById("incident-list-error");
+  if (errorBox) errorBox.classList.add("hidden");
 
   try {
     const res = await fetch("/api/incidents?limit=50");
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`Could not load incident history (server error ${res.status}).`);
     const list = await res.json();
 
     countEl.textContent = list.length;
-    tbody.innerHTML = "";
+    tbody.replaceChildren();
 
     if (list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;">No incidents recorded yet.</td></tr>';
+      const row = document.createElement("tr");
+      row.className = "empty-row";
+      row.innerHTML = '<td colspan="7">No incidents recorded yet. Check an email to start a history.</td>';
+      tbody.appendChild(row);
       return;
     }
 
@@ -563,25 +587,34 @@ async function loadIncidentsList() {
         <td><small>${escapeHtml(new Date(inc.created_at).toLocaleString())}</small></td>
         <td><code>${escapeHtml(inc.claimed_sender)}</code></td>
         <td>${escapeHtml(inc.subject)}</td>
-        <td><span class="badge badge-dim">${escapeHtml(inc.ial_level)}</span></td>
-        <td><span class="badge badge-dim">${escapeHtml(inc.mal_level)}</span></td>
-        <td><span class="badge sev-badge-${escapeHtml(inc.tsr_level)}">${escapeHtml(inc.tsr_level)}</span></td>
-        <td><span class="badge badge-dim">${escapeHtml(inc.sti_level)}</span></td>
+        <td><span class="badge sev-badge-${escapeHtml(inc.tsr_level)}">Threat ${escapeHtml(inc.tsr_level)}</span><br><small>Identity ${escapeHtml(inc.ial_level)} · Authenticity ${escapeHtml(inc.mal_level)} · Trust ${escapeHtml(inc.sti_level)}</small></td>
         <td><span class="badge ${inc.human_review_status === "PENDING" ? "badge-warning" : "badge-neutral"}">${escapeHtml(inc.human_review_status)}</span></td>
-        <td><small>${inc.evidence_retained ? "Retained (Disk)" : "Discarded (Privacy)"}</small></td>
-        <td><button class="btn btn-secondary" style="padding: 2px 8px; font-size: 0.75rem;" onclick="viewIncidentDetail('${escapeHtml(inc.id)}')">View</button></td>
+        <td><small>${inc.evidence_retained ? "Copy kept" : "Not retained"}</small></td>
       `;
+      const actionCell = document.createElement("td");
+      const openButton = document.createElement("button");
+      openButton.type = "button";
+      openButton.className = "btn btn-secondary";
+      openButton.textContent = "Open";
+      openButton.setAttribute("aria-label", `Open assessment for ${inc.subject || "untitled email"}`);
+      openButton.addEventListener("click", () => viewIncidentDetail(inc.id));
+      actionCell.appendChild(openButton);
+      tr.appendChild(actionCell);
       tbody.appendChild(tr);
     });
   } catch (err) {
     console.error("Failed to load incidents:", err);
+    if (errorBox) {
+      errorBox.textContent = err.message || "Incident history could not be loaded.";
+      errorBox.classList.remove("hidden");
+    }
   }
 }
 
 // View an Incident from the Log
 async function viewIncidentDetail(incidentId) {
   try {
-    const res = await fetch(`/api/incidents/${incidentId}`);
+    const res = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}`);
     if (!res.ok) throw new Error("Could not load incident details.");
     const inc = await res.json();
     switchView("analyze");

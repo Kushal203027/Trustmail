@@ -13,14 +13,15 @@ def test_frontend_and_static_assets_served(client):
     res_root = client.get("/")
     assert res_root.status_code == 200
     assert "TrustMail" in res_root.text
-    # Match the current beginner-focused dashboard wording and document title.
-    assert "TrustMail — Understand Your Email" in res_root.text
+    # Verify the product title and primary email-check workflow.
+    assert "Email assessment" in res_root.text
     assert "Check an email" in res_root.text
+    assert "Evidence-to-Claim Ledger" in res_root.text
 
     # CSS stylesheet
     res_css = client.get("/static/styles.css")
     assert res_css.status_code == 200
-    assert "TrustMail Cybersecurity Dashboard Theme" in res_css.text
+    assert "--accent: #315f9f" in res_css.text
 
     # JavaScript controller
     res_js = client.get("/static/app.js")
