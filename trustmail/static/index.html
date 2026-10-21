@@ -16,10 +16,10 @@
       </a>
       <div class="sidebar-label">WORKSPACE</div>
       <nav class="primary-nav">
-        <button class="nav-item active" id="tab-btn-analyze" onclick="switchView('analyze')" aria-current="page">
+        <button class="nav-item active" id="tab-btn-analyze" data-action="switch-view" data-view="analyze" aria-current="page">
           <span class="nav-icon" aria-hidden="true">⌕</span><span>Check an email</span>
         </button>
-        <button class="nav-item" id="tab-btn-incidents" onclick="switchView('incidents')">
+        <button class="nav-item" id="tab-btn-incidents" data-action="switch-view" data-view="incidents">
           <span class="nav-icon" aria-hidden="true">▤</span><span>Incident history</span><span class="nav-count" id="incident-count">0</span>
         </button>
       </nav>
@@ -38,31 +38,31 @@
 
       <section id="view-analyze" class="view-content active" aria-labelledby="page-title">
         <div class="page-intro">
-          <div><h2>Understand the signals before you act.</h2><p>Paste an email or choose an <code>.eml</code> file to review its identity, authenticity, threat indicators, and sender history.</p></div>
+          <div><h2>Understand the signals before you act.</h2><p>Paste an email or choose an <code>.eml</code> file. TrustMail uses local rules and does not run live SPF, DKIM, or DMARC checks. Even passing protocol checks cannot prove real-world identity or that a message is harmless.</p></div>
           <span class="limit-pill">Maximum size: 1 MB</span>
         </div>
 
         <div class="analysis-layout">
           <section class="panel intake-card" aria-labelledby="intake-heading">
             <div class="panel-heading"><div><p class="eyebrow">NEW ASSESSMENT</p><h2 id="intake-heading">Add an email</h2></div><span class="step-mark">01</span></div>
-            <div class="intake-tabs" role="tablist" aria-label="Email input method">
-              <button class="subtab-btn active" id="subtab-paste" role="tab" aria-selected="true" aria-controls="intake-paste-box" onclick="switchIntakeMode('paste')">Paste text</button>
-              <button class="subtab-btn" id="subtab-upload" role="tab" aria-selected="false" aria-controls="intake-upload-box" onclick="switchIntakeMode('upload')">Upload .eml</button>
+            <div class="intake-tabs" role="group" aria-label="Email input method">
+              <button class="subtab-btn active" id="subtab-paste" data-action="switch-intake" data-mode="paste" aria-pressed="true" aria-controls="intake-paste-box">Paste text</button>
+              <button class="subtab-btn" id="subtab-upload" data-action="switch-intake" data-mode="upload" aria-pressed="false" aria-controls="intake-upload-box">Upload .eml</button>
             </div>
 
-            <div id="intake-paste-box" class="intake-mode-box">
+            <div id="intake-paste-box" class="intake-mode-box" role="group" aria-labelledby="subtab-paste">
               <label for="raw-email-input" class="form-label">Email headers and message</label>
               <textarea id="raw-email-input" class="code-editor" placeholder="Paste the complete email here, including its headers…" spellcheck="false" aria-describedby="input-help byte-counter"></textarea>
-              <div class="input-meta"><span id="input-help">Email contents are processed by this local application.</span><span id="byte-counter" aria-live="polite">0 bytes / 1,048,576 bytes limit</span></div>
+              <div class="input-meta"><span id="input-help">Processed locally. Sender, subject, findings, and review notes are saved to local history. Original bytes are kept only if you opt in.</span><span id="byte-counter" aria-live="polite">0 bytes / 1,048,576 bytes limit</span></div>
             </div>
 
-            <div id="intake-upload-box" class="intake-mode-box hidden">
+            <div id="intake-upload-box" class="intake-mode-box hidden" role="group" aria-labelledby="subtab-upload">
               <label for="file-input" class="form-label">Choose an email file</label>
               <div class="drop-zone" id="drop-zone" role="button" tabindex="0" aria-controls="file-input" aria-label="Choose an email file, or drag and drop an EML file here">
                 <span class="upload-icon" aria-hidden="true">↑</span>
                 <strong>Choose a file or drop it here</strong>
                 <span>EML format · Up to 1 MB</span>
-                <input type="file" id="file-input" accept=".eml,message/rfc822,text/plain" class="visually-hidden">
+                <input type="file" id="file-input" accept=".eml,message/rfc822,text/plain" class="visually-hidden" tabindex="-1">
                 <div id="selected-file-info" class="file-info hidden" aria-live="polite"></div>
               </div>
             </div>
@@ -72,12 +72,13 @@
               <span><strong>Keep a local copy for integrity checks <em>Optional</em></strong><small>Off by default. If enabled, the original email is stored locally and may contain private information.</small></span>
             </label>
             <details class="sample-details"><summary>Try a synthetic sample</summary><div class="sample-actions">
-              <button type="button" class="sample-button" onclick="loadSample('bec_spoof')">Impersonation attempt</button>
-              <button type="button" class="sample-button" onclick="loadSample('credential_phish')">Password scam</button>
-              <button type="button" class="sample-button" onclick="loadSample('malformed_headers')">Malformed email</button>
-              <button type="button" class="sample-button" onclick="loadSample('benign_newsletter')">Newsletter</button>
+              <button type="button" class="sample-button" data-action="load-sample" data-sample="bec_spoof">Impersonation attempt</button>
+              <button type="button" class="sample-button" data-action="load-sample" data-sample="credential_phish">Password scam</button>
+              <button type="button" class="sample-button" data-action="load-sample" data-sample="malformed_headers">Malformed email</button>
+              <button type="button" class="sample-button" data-action="load-sample" data-sample="benign_newsletter">Newsletter</button>
             </div></details>
-            <div class="form-actions"><button type="button" id="btn-submit-analyze" class="btn btn-primary" onclick="submitAnalysis()"><span aria-hidden="true">◉</span> Check this email</button><button type="button" class="btn btn-quiet" onclick="clearIntake()">Clear</button></div>
+            <div class="form-actions"><button type="button" id="btn-submit-analyze" class="btn btn-primary" data-action="submit-analysis"><span aria-hidden="true">◉</span> Check this email</button><button type="button" class="btn btn-quiet" data-action="clear-intake">Clear</button></div>
+            <p id="analysis-status" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
             <div id="submit-error" class="alert-box alert-error hidden" role="alert"></div>
           </section>
 
@@ -93,7 +94,7 @@
               </ul>
               <div class="explainer-foot"><strong>Human review matters</strong><span>Verify important requests through a trusted, separate channel.</span></div>
             </section>
-            <section class="privacy-note"><span aria-hidden="true">◇</span><p><strong>Privacy by choice</strong><br>Evidence retention is optional. A SHA-256 digest identifies the intake bytes; it does not prove who sent the email.</p></section>
+            <section class="privacy-note"><span aria-hidden="true">◇</span><p><strong>Local demo only</strong><br>No analyst sign-in is required. Keep TrustMail bound to this computer; do not expose it as a shared service. Retention is optional. SHA-256 can compare bytes with an intake reference; it does not prove provenance or chain of custody.</p></section>
           </aside>
         </div>
 
@@ -103,13 +104,19 @@
             <div class="assessment-title"><div><p class="eyebrow">SUBJECT</p><h2 id="res-subject">(Subject)</h2></div><span id="res-review-badge" class="badge badge-warning">Review status</span></div>
             <div class="assessment-meta"><span>Incident <code id="res-incident-id">-</code></span><span>Received <time id="res-timestamp">-</time></span><span>Intake digest <code id="res-hash" class="hash-code">-</code></span></div>
           </div>
+          <section class="outcome-panel" aria-labelledby="outcome-title">
+            <div class="outcome-mark" aria-hidden="true">!</div>
+            <div class="outcome-copy"><h3 id="outcome-title">Assessment needs human review</h3><p id="outcome-description">Review the findings and verify important requests through a separate trusted channel.</p></div>
+            <div class="outcome-counts"><span><strong id="summary-finding-count">0</strong> findings</span><span><strong id="summary-unknown-count">0</strong> unknowns</span></div>
+          </section>
 
           <section class="panel triage-card">
             <div class="panel-heading"><div><p class="eyebrow">NEXT STEP</p><h2>Human review</h2></div><span id="triage-review-flag" class="badge badge-alert">Review may be needed</span></div>
             <div class="triage-body"><div class="triage-reasons" id="triage-reasons-box"><strong>Why this may need attention</strong><ul id="triage-reasons-list"></ul></div>
               <div class="triage-actions"><div class="form-row"><label for="review-status-select" class="form-label">Review status</label><select id="review-status-select" class="form-select"><option value="PENDING">Pending</option><option value="UNDER_REVIEW">Under review</option><option value="ESCALATED">Escalated</option><option value="DISMISSED">Dismissed</option><option value="CONFIRMED_THREAT">Confirmed threat</option></select></div>
                 <div class="form-row"><label for="analyst-notes-input" class="form-label">Review notes <span class="optional-label">Optional</span></label><textarea id="analyst-notes-input" class="form-textarea" placeholder="Record what you checked and the decision made."></textarea></div>
-                <div class="triage-buttons"><button type="button" class="btn btn-primary" onclick="submitReviewUpdate()">Save review</button><button type="button" id="btn-verify-tamper" class="btn btn-secondary" onclick="verifyTamperIntegrity()">Check saved copy integrity</button></div>
+                <div class="triage-buttons"><button type="button" class="btn btn-primary" data-action="save-review">Save review</button><button type="button" id="btn-verify-tamper" class="btn btn-secondary" data-action="verify-evidence">Check saved copy integrity</button></div>
+                <p id="tamper-availability" class="form-help">Integrity checks are available only when the original bytes were retained.</p>
                 <div id="review-update-result" class="alert-box hidden" role="status"></div><div id="tamper-verify-result" class="alert-box hidden" role="status"></div>
               </div>
             </div>
@@ -124,20 +131,20 @@
             </div>
           </details>
 
-          <details class="disclosure-card ledger-disclosure" open><summary>Evidence-to-Claim Ledger <span>Observed evidence, rule, interpretation, and limits</span></summary>
+          <details class="disclosure-card ledger-disclosure"><summary>Evidence-to-Claim Ledger <span>Open to inspect observed evidence, rules, interpretations, and limits</span></summary>
             <div class="findings-toolbar"><div><h3>Detailed findings</h3><p>Each result is shown with the evidence available to support it.</p></div><div class="findings-filter" aria-label="Filter findings">
-              <button class="filter-btn active" onclick="filterFindings('all')">All <span id="count-all">0</span></button><button class="filter-btn" onclick="filterFindings('VERIFIED_FACT')">Facts <span id="count-facts">0</span></button><button class="filter-btn" onclick="filterFindings('UNVERIFIED_CLAIM')">Claims <span id="count-claims">0</span></button><button class="filter-btn" onclick="filterFindings('HEURISTIC_FINDING')">Heuristics <span id="count-heuristics">0</span></button><button class="filter-btn" onclick="filterFindings('UNKNOWN_INFORMATION')">Unknowns <span id="count-unknowns">0</span></button>
+              <button class="filter-btn active" data-action="filter-findings" data-category="all" aria-pressed="true">All <span id="count-all">0</span></button><button class="filter-btn" data-action="filter-findings" data-category="VERIFIED_FACT" aria-pressed="false">Facts <span id="count-facts">0</span></button><button class="filter-btn" data-action="filter-findings" data-category="UNVERIFIED_CLAIM" aria-pressed="false">Claims <span id="count-claims">0</span></button><button class="filter-btn" data-action="filter-findings" data-category="HEURISTIC_FINDING" aria-pressed="false">Heuristics <span id="count-heuristics">0</span></button><button class="filter-btn" data-action="filter-findings" data-category="UNKNOWN_INFORMATION" aria-pressed="false">Unknowns <span id="count-unknowns">0</span></button>
             </div></div>
-            <div class="table-responsive"><table class="data-table findings-table"><thead><tr><th>Dimension / type</th><th>Finding and interpretation</th><th>Observed evidence & source</th><th>Limitations / next review</th></tr></thead><tbody id="findings-table-body"></tbody></table></div>
+            <div class="table-responsive" role="region" aria-label="Evidence findings table; scroll horizontally to see all columns" tabindex="0"><table class="data-table findings-table"><thead><tr><th>Dimension / type</th><th>Finding and interpretation</th><th>Observed evidence & source</th><th>Limitations / next review</th></tr></thead><tbody id="findings-table-body"></tbody></table></div>
           </details>
           <details class="disclosure-card"><summary>Incident activity</summary><div id="audit-trail-list" class="audit-list"></div></details>
         </section>
       </section>
 
       <section id="view-incidents" class="view-content hidden" aria-labelledby="incidents-heading">
-        <div class="page-intro"><div><p class="eyebrow">WORKSPACE / HISTORY</p><h2 id="incidents-heading">Previous checks</h2><p>Open an assessment to review its findings, evidence, and human review history.</p></div><button class="btn btn-secondary" onclick="loadIncidentsList()">↻ Refresh</button></div>
+        <div class="page-intro"><div><p class="eyebrow">WORKSPACE / HISTORY</p><h2 id="incidents-heading">Previous checks</h2><p>Open an assessment to review its findings, evidence, and human review history.</p></div><button class="btn btn-secondary" data-action="refresh-history">↻ Refresh</button></div>
         <section class="panel history-panel"><div class="history-caption"><div><h3>Incident history</h3><p>Most recent assessments are listed first.</p></div><span class="history-local">Stored locally</span></div>
-          <div class="table-responsive"><table class="data-table incidents-table"><thead><tr><th>Created</th><th>Claimed sender</th><th>Subject</th><th>Assessment</th><th>Review state</th><th>Evidence copy</th><th></th></tr></thead><tbody id="incidents-table-body"><tr class="empty-row"><td colspan="7">No incidents recorded yet. Check an email to start a history.</td></tr></tbody></table></div>
+          <div class="table-responsive" role="region" aria-label="Incident history table; scroll horizontally to see all columns" tabindex="0"><table class="data-table incidents-table"><thead><tr><th>Created</th><th>Claimed sender</th><th>Subject</th><th>Assessment</th><th>Review state</th><th>Evidence copy</th><th></th></tr></thead><tbody id="incidents-table-body" aria-busy="true"><tr class="empty-row"><td colspan="7">Loading incident history…</td></tr></tbody></table></div>
           <div id="incident-list-error" class="inline-state hidden" role="status"></div>
         </section>
       </section>

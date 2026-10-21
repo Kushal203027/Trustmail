@@ -10,15 +10,23 @@ let currentIncidentId = null;
 let currentFindingsFilter = "all";
 let uploadedFileObject = null;
 
-// Safe HTML Escaper to Prevent XSS / Script Injection
-function escapeHtml(unsafe) {
-  if (unsafe === null || unsafe === undefined) return "";
-  return String(unsafe)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+// Build text nodes with textContent so untrusted email/API values stay inert.
+function appendText(parent, tagName, value, className = "") {
+  const element = document.createElement(tagName);
+  if (className) element.className = className;
+  element.textContent = value === null || value === undefined ? "" : String(value);
+  parent.appendChild(element);
+  return element;
+}
+
+function appendBadge(parent, label, className) {
+  return appendText(parent, "span", label, `badge ${className}`);
+}
+
+function formatDate(value, options = {}) {
+  if (!value) return "Unavailable";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Unavailable" : date.toLocaleString(undefined, options);
 }
 
 // Built-in Realistic Test Scenarios
@@ -76,6 +84,23 @@ Read the full editorial on our community site: https://technews-bulletin.org/art
 
 // UI Initialization
 document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("click", (event) => {
+    const control = event.target.closest("[data-action]");
+    if (!control) return;
+    switch (control.dataset.action) {
+      case "switch-view": switchView(control.dataset.view); break;
+      case "switch-intake": switchIntakeMode(control.dataset.mode); break;
+      case "load-sample": loadSample(control.dataset.sample); break;
+      case "submit-analysis": submitAnalysis(); break;
+      case "clear-intake": clearIntake(); break;
+      case "save-review": submitReviewUpdate(); break;
+      case "verify-evidence": verifyTamperIntegrity(); break;
+      case "filter-findings": filterFindings(control.dataset.category); break;
+      case "refresh-history": loadIncidentsList(); break;
+      default: break;
+    }
+  });
+
   const rawInput = document.getElementById("raw-email-input");
   const byteCounter = document.getElementById("byte-counter");
 
@@ -131,6 +156,18 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function handleFileSelection(file) {
+  const errorBox = document.getElementById("submit-error");
+  if (file.size === 0 || file.size > 1048576) {
+    uploadedFileObject = null;
+    document.getElementById("file-input").value = "";
+    errorBox.textContent = file.size === 0
+      ? "This file is empty. Choose an email file that contains message data."
+      : "This file is larger than the 1 MB limit. Choose a smaller email file.";
+    errorBox.classList.remove("hidden");
+    document.getElementById("selected-file-info").classList.add("hidden");
+    return;
+  }
+  errorBox.classList.add("hidden");
   uploadedFileObject = file;
   const info = document.getElementById("selected-file-info");
   if (info) {
@@ -160,8 +197,8 @@ function switchView(viewName) {
 function switchIntakeMode(mode) {
   document.getElementById("subtab-paste").classList.toggle("active", mode === "paste");
   document.getElementById("subtab-upload").classList.toggle("active", mode === "upload");
-  document.getElementById("subtab-paste").setAttribute("aria-selected", String(mode === "paste"));
-  document.getElementById("subtab-upload").setAttribute("aria-selected", String(mode === "upload"));
+  document.getElementById("subtab-paste").setAttribute("aria-pressed", String(mode === "paste"));
+  document.getElementById("subtab-upload").setAttribute("aria-pressed", String(mode === "upload"));
 
   document.getElementById("intake-paste-box").classList.toggle("hidden", mode !== "paste");
   document.getElementById("intake-upload-box").classList.toggle("hidden", mode !== "upload");
@@ -173,6 +210,7 @@ function loadSample(key) {
     const input = document.getElementById("raw-email-input");
     input.value = SAMPLES[key];
     input.dispatchEvent(new Event("input"));
+    document.getElementById("submit-error").classList.add("hidden");
   }
 }
 
@@ -182,12 +220,18 @@ function clearIntake() {
   uploadedFileObject = null;
   const fileInput = document.getElementById("file-input");
   if (fileInput) fileInput.value = "";
+  document.getElementById("retain-evidence-checkbox").checked = false;
+  switchIntakeMode("paste");
   const info = document.getElementById("selected-file-info");
   if (info) {
     info.textContent = "";
     info.classList.add("hidden");
   }
   document.getElementById("submit-error").classList.add("hidden");
+  document.getElementById("analysis-status").textContent = "";
+  document.getElementById("results-container").classList.add("hidden");
+  currentAssessment = null;
+  currentIncidentId = null;
 }
 
 // Submit Analysis to API
@@ -201,9 +245,9 @@ async function submitAnalysis() {
 
   const btn = document.getElementById("btn-submit-analyze");
   btn.disabled = true;
-  btn.disabled = true;
   btn.setAttribute("aria-busy", "true");
   btn.textContent = "Checking email…";
+  document.getElementById("analysis-status").textContent = "Checking email. This may take a moment.";
 
   try {
     let response;
@@ -242,15 +286,18 @@ async function submitAnalysis() {
     }
 
     const data = await response.json();
+    data.evidence_retained = retainEvidence;
     renderAssessment(data);
     loadIncidentsList();
+    document.getElementById("analysis-status").textContent = "Assessment complete. Review the summary and findings.";
   } catch (err) {
     errBox.textContent = err.message;
     errBox.classList.remove("hidden");
+    document.getElementById("analysis-status").textContent = `Assessment failed. ${err.message}`;
   } finally {
     btn.disabled = false;
     btn.removeAttribute("aria-busy");
-    btn.innerHTML = '<span aria-hidden="true">◉</span> Check this email';
+    btn.textContent = "Check this email";
   }
 }
 
@@ -269,6 +316,25 @@ function renderAssessment(data) {
   document.getElementById("res-incident-id").textContent = data.incident_id;
   document.getElementById("res-timestamp").textContent = data.timestamp ? new Date(data.timestamp).toUTCString() : "Unavailable";
   document.getElementById("res-hash").textContent = data.evidence_hash;
+
+  const findings = Array.isArray(data.findings) ? data.findings : [];
+  const unknownCount = findings.filter(f => f.category === "UNKNOWN_INFORMATION").length;
+  document.getElementById("summary-finding-count").textContent = findings.length;
+  document.getElementById("summary-unknown-count").textContent = unknownCount;
+  const outcomeTitle = document.getElementById("outcome-title");
+  const outcomeDescription = document.getElementById("outcome-description");
+  const outcomePanel = document.querySelector(".outcome-panel");
+  if (data.human_review_required) {
+    outcomeTitle.textContent = "Human review required before acting";
+    outcomeDescription.textContent = "TrustMail found signals that need a person to review. Check the findings and verify important requests through a separate trusted channel.";
+    outcomePanel.classList.add("outcome-review");
+    outcomePanel.classList.remove("outcome-quiet");
+  } else {
+    outcomeTitle.textContent = "No configured rule required escalation";
+    outcomeDescription.textContent = "This does not establish that the email is safe. Review the unknowns and consider the context of the request.";
+    outcomePanel.classList.add("outcome-quiet");
+    outcomePanel.classList.remove("outcome-review");
+  }
 
   // Review Badge
   const reviewBadge = document.getElementById("res-review-badge");
@@ -293,7 +359,7 @@ function renderAssessment(data) {
   // Dim 3: TSR
   const tsrBadge = document.getElementById("dim-tsr-level");
   tsrBadge.textContent = data.threat_assessment.level;
-  tsrBadge.className = `badge sev-badge-${data.threat_assessment.level}`;
+  tsrBadge.className = `badge ${severityBadgeClass(data.threat_assessment.level)}`;
   document.getElementById("dim-tsr-title").textContent = data.threat_assessment.title;
   document.getElementById("dim-tsr-desc").textContent = data.threat_assessment.description;
   document.getElementById("dim-tsr-rationale").textContent = data.threat_assessment.rationale;
@@ -310,7 +376,7 @@ function renderAssessment(data) {
   const triageFlag = document.getElementById("triage-review-flag");
   const reasonsBox = document.getElementById("triage-reasons-box");
   const reasonsList = document.getElementById("triage-reasons-list");
-  reasonsList.innerHTML = "";
+  reasonsList.replaceChildren();
 
   if (data.human_review_required) {
     triageFlag.textContent = "HUMAN REVIEW MANDATED";
@@ -330,16 +396,27 @@ function renderAssessment(data) {
   document.getElementById("review-status-select").value = data.human_review_status || "PENDING";
   document.getElementById("analyst-notes-input").value = data.analyst_notes || "";
   document.getElementById("tamper-verify-result").classList.add("hidden");
+  const verifyButton = document.getElementById("btn-verify-tamper");
+  const retained = data.evidence_retained === true;
+  verifyButton.disabled = !retained;
+  document.getElementById("tamper-availability").textContent = retained
+    ? "The saved bytes can be compared with the intake digest. This does not prove who sent the message."
+    : "No original copy was retained, so there are no saved bytes to verify.";
 
   // Findings Counts & Table
   updateFindingsCounters(data);
-  renderFindingsTable(data.findings);
+  filterFindings("all");
 
   // Audit Events
   renderAuditTrail(data.incident_id);
 
   // Scroll to results
-  resContainer.scrollIntoView({ behavior: "smooth" });
+  resContainer.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+function severityBadgeClass(severity) {
+  const allowed = new Set(["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+  return allowed.has(severity) ? `sev-badge-${severity}` : "badge-neutral";
 }
 
 function renderDimensionFindings(containerId, dimension, findings, dimensionKey) {
@@ -396,8 +473,9 @@ function updateFindingsCounters(data) {
 function filterFindings(category) {
   currentFindingsFilter = category;
   document.querySelectorAll(".findings-filter .filter-btn").forEach(btn => {
-    const isTarget = btn.getAttribute("onclick").includes(`'${category}'`);
+    const isTarget = btn.dataset.category === category;
     btn.classList.toggle("active", isTarget);
+    btn.setAttribute("aria-pressed", String(isTarget));
   });
 
   if (!currentAssessment) return;
@@ -414,41 +492,73 @@ function renderFindingsTable(findings) {
   if (!findings || findings.length === 0) {
     const row = document.createElement("tr");
     row.className = "empty-row";
-    row.innerHTML = '<td colspan="4">No findings in this category.</td>';
+    const cell = appendText(row, "td", "No findings in this category.");
+    cell.colSpan = 4;
     tbody.appendChild(row);
     return;
   }
 
   findings.forEach(f => {
     const tr = document.createElement("tr");
-
-    // Category badge class
     let catClass = "cat-claim";
     if (f.category === "VERIFIED_FACT") catClass = "cat-fact";
     else if (f.category === "HEURISTIC_FINDING") catClass = "cat-heuristic";
     else if (f.category === "UNKNOWN_INFORMATION") catClass = "cat-unknown";
 
-    tr.innerHTML = `
-      <td>
-        <span class="badge badge-dim">${escapeHtml(f.dimension)}</span><br><span class="badge ${catClass}">${escapeHtml(f.category)}</span> <span class="badge sev-badge-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</span>
-      </td>
-      <td>
-        <strong>${escapeHtml(f.title)}</strong>
-        <p style="color: var(--text-secondary); margin-top: 4px;">${escapeHtml(f.description)}</p>
-        <p class="ledger-reference"><strong>Rule/reference:</strong> ${escapeHtml(f.id)}</p>
-      </td>
-      <td>
-        ${f.evidence ? `<code class="evidence-code">${escapeHtml(f.evidence)}</code>` : '<span class="limitations-text">No evidence snippet recorded.</span>'}
-        ${(f.observations || []).map(observation => `
-          <p class="ledger-observation"><strong>Observed (${escapeHtml(observation.type)}):</strong> ${escapeHtml(observation.value)}</p>
-          <p class="ledger-location">${observation.source_location && observation.source_location.available
-            ? `Source: ${escapeHtml(observation.source_location.source)}${observation.source_location.start !== null && observation.source_location.start !== undefined ? `, characters ${escapeHtml(observation.source_location.start)}–${escapeHtml(observation.source_location.end)}` : ""}`
-            : `Source location unavailable: ${escapeHtml(observation.source_location?.unavailable_reason || "No precise source location was recorded.")}`}</p>
-        `).join("")}
-        ${f.observations && f.observations.length ? '<p class="ledger-interpretation"><strong>Interpretation:</strong> The rule flagged this observation as suspicious; this is a heuristic indicator, not proof of malicious intent.</p>' : ""}
-      </td>
-      <td><span class="limitations-text">${escapeHtml(f.limitations || "No specific limitation recorded.")}</span>${f.review_guidance ? `<p class="ledger-review"><strong>Review next:</strong> ${escapeHtml(f.review_guidance)}</p>` : ""}</td>
-    `;
+    const classification = document.createElement("td");
+    appendBadge(classification, f.dimension || "Unknown dimension", "badge-dim");
+    classification.appendChild(document.createElement("br"));
+    appendBadge(classification, f.category || "UNKNOWN_INFORMATION", catClass);
+    appendBadge(classification, f.severity || "UNKNOWN", severityBadgeClass(f.severity));
+    tr.appendChild(classification);
+
+    const claim = document.createElement("td");
+    appendText(claim, "strong", f.title || "Untitled finding");
+    appendText(claim, "p", f.description || "No explanation was recorded.", "finding-description");
+    const reference = appendText(claim, "p", "", "ledger-reference");
+    appendText(reference, "strong", "Rule/reference: ");
+    reference.appendChild(document.createTextNode(f.id || "Unavailable"));
+    tr.appendChild(claim);
+
+    const evidence = document.createElement("td");
+    if (f.evidence) appendText(evidence, "code", f.evidence, "evidence-code");
+    else appendText(evidence, "p", "No evidence snippet recorded.", "limitations-text");
+    const observations = Array.isArray(f.observations) ? f.observations : [];
+    if (observations.length === 0) {
+      appendText(evidence, "p", "No structured parser observation is linked to this finding.", "ledger-location");
+    }
+    observations.forEach(observation => {
+      const observed = appendText(evidence, "p", "", "ledger-observation");
+      appendText(observed, "strong", `Observed (${observation.type || "observation"}): `);
+      observed.appendChild(document.createTextNode(String(observation.value ?? "Unavailable")));
+
+      const location = observation.source_location;
+      let locationText = "Source location unavailable: no precise source location was recorded.";
+      if (location && location.available) {
+        locationText = `Source: ${location.source || "Unspecified"}`;
+        if (location.start !== null && location.start !== undefined && location.end !== null && location.end !== undefined) {
+          locationText += `, characters ${location.start}–${location.end}`;
+        }
+      } else if (location?.unavailable_reason) {
+        locationText = `Source location unavailable: ${location.unavailable_reason}`;
+      }
+      appendText(evidence, "p", locationText, "ledger-location");
+    });
+    if (f.category === "HEURISTIC_FINDING") {
+      const interpretation = appendText(evidence, "p", "", "ledger-interpretation");
+      appendText(interpretation, "strong", "Rule interpretation: ");
+      interpretation.appendChild(document.createTextNode(f.description || "A heuristic rule raised this indicator; it is not proof of malicious intent."));
+    }
+    tr.appendChild(evidence);
+
+    const limits = document.createElement("td");
+    appendText(limits, "p", f.limitations || "No specific limitation recorded.", "limitations-text");
+    if (f.review_guidance) {
+      const review = appendText(limits, "p", "", "ledger-review");
+      appendText(review, "strong", "Review next: ");
+      review.appendChild(document.createTextNode(String(f.review_guidance)));
+    }
+    tr.appendChild(limits);
     tbody.appendChild(tr);
   });
 }
@@ -473,7 +583,7 @@ async function submitReviewUpdate() {
 
     const resBadge = document.getElementById("res-review-badge");
     resBadge.textContent = status;
-    resBadge.className = `badge ${status === "CONFIRMED_THREAT" ? "badge-alert" : "badge-info"}`;
+    resBadge.className = `badge ${status === "CONFIRMED_THREAT" ? "badge-alert" : status === "PENDING" ? "badge-warning" : "badge-info"}`;
 
     renderAuditTrail(currentIncidentId);
     loadIncidentsList();
@@ -489,7 +599,8 @@ async function submitReviewUpdate() {
       updateResult.textContent = err.message;
       updateResult.classList.remove("hidden");
     } else {
-      alert(err.message);
+      document.getElementById("submit-error").textContent = err.message || "Review update failed.";
+      document.getElementById("submit-error").classList.remove("hidden");
     }
   }
 }
@@ -504,20 +615,28 @@ async function verifyTamperIntegrity() {
   resultBox.textContent = "Verifying cryptographic hash of on-disk bytes...";
 
   try {
-    const res = await fetch(`/api/incidents/${currentIncidentId}/verify-evidence`, {
+    const res = await fetch(`/api/incidents/${encodeURIComponent(currentIncidentId)}/verify-evidence`, {
       method: "POST",
     });
     const data = await res.json();
 
     if (data.status === "VERIFIED") {
       resultBox.classList.add("alert-success");
-      resultBox.innerHTML = `<strong>INTEGRITY VERIFIED:</strong> On-disk bytes exactly match the intake SHA-256 digest (<code>${escapeHtml(data.recomputed_hash)}</code>).`;
+      appendText(resultBox, "strong", "Integrity verified: ");
+      resultBox.appendChild(document.createTextNode("Saved bytes match the intake SHA-256 digest ("));
+      appendText(resultBox, "code", data.recomputed_hash || "Unavailable");
+      resultBox.appendChild(document.createTextNode("). This does not establish sender identity or chain of custody."));
     } else if (data.status === "TAMPER_DETECTED") {
       resultBox.classList.add("alert-error");
-      resultBox.innerHTML = `<strong>TAMPER DETECTED:</strong> On-disk bytes have been altered! Expected: <code>${escapeHtml(data.expected_hash)}</code> | Found: <code>${escapeHtml(data.recomputed_hash)}</code>.`;
+      appendText(resultBox, "strong", "Integrity check mismatch: ");
+      resultBox.appendChild(document.createTextNode("The saved bytes differ from the intake digest. Expected: "));
+      appendText(resultBox, "code", data.expected_hash || "Unavailable");
+      resultBox.appendChild(document.createTextNode(". Found: "));
+      appendText(resultBox, "code", data.recomputed_hash || "Unavailable");
+      resultBox.appendChild(document.createTextNode("."));
     } else {
       resultBox.classList.add("alert-info");
-      resultBox.textContent = data.message;
+      resultBox.textContent = data.message || "No retained email copy is available to check.";
     }
 
     renderAuditTrail(currentIncidentId);
@@ -532,29 +651,28 @@ async function renderAuditTrail(incidentId) {
   const container = document.getElementById("audit-trail-list");
   try {
     const res = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}`);
-    if (!res.ok) return;
+    if (!res.ok) throw new Error("Incident activity could not be loaded.");
     const incident = await res.json();
 
-    container.innerHTML = "";
+    container.replaceChildren();
     if (!incident.audit_events || incident.audit_events.length === 0) {
-      container.innerHTML = '<p style="color: var(--text-muted); font-size: 0.8rem;">No audit events recorded.</p>';
+      appendText(container, "p", "No incident activity has been recorded.", "inline-state");
       return;
     }
 
     incident.audit_events.forEach(evt => {
       const item = document.createElement("div");
       item.className = "audit-item";
-      item.innerHTML = `
-        <div>
-          <span class="badge badge-neutral" style="margin-right: 8px;">${escapeHtml(evt.event_type)}</span>
-          <span>${escapeHtml(JSON.stringify(evt.details))}</span>
-        </div>
-        <div class="audit-meta">${escapeHtml(new Date(evt.timestamp).toUTCString())}</div>
-      `;
+      const eventDescription = document.createElement("div");
+      appendBadge(eventDescription, evt.event_type || "Activity", "badge-neutral");
+      appendText(eventDescription, "span", JSON.stringify(evt.details || {}), "audit-details");
+      item.appendChild(eventDescription);
+      appendText(item, "time", formatDate(evt.timestamp, { timeZone: "UTC", timeZoneName: "short" }), "audit-meta");
       container.appendChild(item);
     });
   } catch (err) {
-    console.error("Failed to fetch audit trail:", err);
+    container.replaceChildren();
+    appendText(container, "p", err.message || "Incident activity could not be loaded. Refresh the incident details to try again.", "inline-state");
   }
 }
 
@@ -564,6 +682,7 @@ async function loadIncidentsList() {
   const countEl = document.getElementById("incident-count");
   const errorBox = document.getElementById("incident-list-error");
   if (errorBox) errorBox.classList.add("hidden");
+  tbody.setAttribute("aria-busy", "true");
 
   try {
     const res = await fetch("/api/incidents?limit=50");
@@ -576,22 +695,31 @@ async function loadIncidentsList() {
     if (list.length === 0) {
       const row = document.createElement("tr");
       row.className = "empty-row";
-      row.innerHTML = '<td colspan="7">No incidents recorded yet. Check an email to start a history.</td>';
+      const cell = appendText(row, "td", "No incidents recorded yet. Check an email to start a history.");
+      cell.colSpan = 7;
       tbody.appendChild(row);
       return;
     }
 
     list.forEach(inc => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td><small>${escapeHtml(new Date(inc.created_at).toLocaleString())}</small></td>
-        <td><code>${escapeHtml(inc.claimed_sender)}</code></td>
-        <td>${escapeHtml(inc.subject)}</td>
-        <td><span class="badge sev-badge-${escapeHtml(inc.tsr_level)}">Threat ${escapeHtml(inc.tsr_level)}</span><br><small>Identity ${escapeHtml(inc.ial_level)} · Authenticity ${escapeHtml(inc.mal_level)} · Trust ${escapeHtml(inc.sti_level)}</small></td>
-        <td><span class="badge ${inc.human_review_status === "PENDING" ? "badge-warning" : "badge-neutral"}">${escapeHtml(inc.human_review_status)}</span></td>
-        <td><small>${inc.evidence_retained ? "Copy kept" : "Not retained"}</small></td>
-      `;
-      const actionCell = document.createElement("td");
+      const createdCell = tr.insertCell();
+      appendText(createdCell, "time", formatDate(inc.created_at), "history-date");
+      const senderCell = tr.insertCell();
+      appendText(senderCell, "code", inc.claimed_sender || "Unknown sender");
+      appendText(tr.insertCell(), "span", inc.subject || "(No subject)");
+
+      const assessmentCell = tr.insertCell();
+      appendBadge(assessmentCell, `Threat ${inc.tsr_level || "Unknown"}`, severityBadgeClass(inc.tsr_level));
+      appendText(assessmentCell, "span", `Identity ${inc.ial_level || "Unknown"} · Authenticity ${inc.mal_level || "Unknown"} · Trust ${inc.sti_level || "Unknown"}`, "history-dimensions");
+
+      const reviewCell = tr.insertCell();
+      const reviewStatus = inc.human_review_status || "Unknown";
+      const reviewClass = reviewStatus === "PENDING" ? "badge-warning" : reviewStatus === "CONFIRMED_THREAT" ? "badge-alert" : "badge-neutral";
+      appendBadge(reviewCell, reviewStatus, reviewClass);
+      appendText(tr.insertCell(), "span", inc.evidence_retained ? "Copy kept" : "Not retained");
+
+      const actionCell = tr.insertCell();
       const openButton = document.createElement("button");
       openButton.type = "button";
       openButton.className = "btn btn-secondary";
@@ -603,11 +731,12 @@ async function loadIncidentsList() {
       tbody.appendChild(tr);
     });
   } catch (err) {
-    console.error("Failed to load incidents:", err);
     if (errorBox) {
-      errorBox.textContent = err.message || "Incident history could not be loaded.";
+      errorBox.textContent = err.message || "Incident history could not be loaded. Check that TrustMail is running, then refresh.";
       errorBox.classList.remove("hidden");
     }
+  } finally {
+    tbody.removeAttribute("aria-busy");
   }
 }
 
@@ -617,13 +746,16 @@ async function viewIncidentDetail(incidentId) {
     const res = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}`);
     if (!res.ok) throw new Error("Could not load incident details.");
     const inc = await res.json();
+    if (!inc.assessment) throw new Error("This incident has no assessment details to display.");
     switchView("analyze");
-    if (inc.assessment) {
-      inc.assessment.human_review_status = inc.human_review_status;
-      inc.assessment.analyst_notes = inc.analyst_notes || "";
-      renderAssessment(inc.assessment);
-    }
+    inc.assessment.human_review_status = inc.human_review_status;
+    inc.assessment.analyst_notes = inc.analyst_notes || "";
+    inc.assessment.evidence_retained = inc.evidence_retained === true;
+    renderAssessment(inc.assessment);
   } catch (err) {
-    alert(err.message);
+    switchView("incidents");
+    const errorBox = document.getElementById("incident-list-error");
+    errorBox.textContent = err.message || "Could not load this assessment. Try refreshing the history list.";
+    errorBox.classList.remove("hidden");
   }
 }

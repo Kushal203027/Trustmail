@@ -94,14 +94,14 @@ def test_api_and_incident_storage_preserve_url_observation(client):
     assert stored_finding["observations"] == response_finding["observations"]
 
 
-def test_frontend_renders_ledger_fields_with_html_escaping():
+def test_frontend_renders_untrusted_ledger_fields_as_text_nodes():
     from pathlib import Path
 
     app_js = (Path(__file__).resolve().parents[1] / "trustmail" / "static" / "app.js").read_text(encoding="utf-8")
     assert "Rule/reference:" in app_js
-    assert "Observed (${escapeHtml(observation.type)})" in app_js
-    assert "escapeHtml(observation.value)" in app_js
-    assert "Source location unavailable:" in app_js
-    assert "escapeHtml(f.review_guidance)" in app_js
-    assert "escapeHtml(f.description)" in app_js
-    assert 'item.textContent = `${f.id}: ${f.title}`' in app_js
+    assert 'appendText(observed, "strong", `Observed (${observation.type || "observation"}): `)' in app_js
+    assert 'document.createTextNode(String(observation.value ?? "Unavailable"))' in app_js
+    assert 'Source location unavailable: no precise source location was recorded.' in app_js
+    assert 'document.createTextNode(String(f.review_guidance))' in app_js
+    assert 'appendText(claim, "p", f.description || "No explanation was recorded."' in app_js
+    assert "innerHTML" not in app_js

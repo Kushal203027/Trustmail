@@ -5,6 +5,7 @@ incident log, incident details, human review lifecycle, and tamper verification)
 """
 
 from pathlib import Path
+import re
 
 
 def test_frontend_and_static_assets_served(client):
@@ -17,16 +18,29 @@ def test_frontend_and_static_assets_served(client):
     assert "Email assessment" in res_root.text
     assert "Check an email" in res_root.text
     assert "Evidence-to-Claim Ledger" in res_root.text
+    assert 'data-action="submit-analysis"' in res_root.text
+    assert 'id="analysis-status" class="visually-hidden" role="status"' in res_root.text
+    assert 'class="disclosure-card ledger-disclosure"' in res_root.text
+    assert not re.search(r'<details[^>]*class="[^"]*ledger-disclosure[^"]*"[^>]*\sopen(?:\s|>)', res_root.text)
+    assert 'id="summary-unknown-count"' in res_root.text
+    assert 'id="tamper-availability"' in res_root.text
+    assert "does not run live SPF, DKIM, or DMARC checks" in res_root.text
+    assert "SHA-256 can compare bytes with an intake reference" in res_root.text
+    assert not re.search(r"\son[a-z]+\s*=", res_root.text, re.IGNORECASE)
 
     # CSS stylesheet
     res_css = client.get("/static/styles.css")
     assert res_css.status_code == 200
     assert "--accent: #315f9f" in res_css.text
+    assert "body { font-size: 15px" in res_css.text
+    assert ":focus-visible" in res_css.text
 
     # JavaScript controller
     res_js = client.get("/static/app.js")
     assert res_js.status_code == 200
-    assert "escapeHtml" in res_js.text
+    assert "textContent" in res_js.text
+    assert "innerHTML" not in res_js.text
+    assert "file.size === 0 || file.size > 1048576" in res_js.text
 
 
 def test_complete_incident_lifecycle_and_endpoints(client, tmp_path):
