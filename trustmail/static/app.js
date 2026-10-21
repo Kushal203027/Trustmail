@@ -9,6 +9,7 @@ let currentAssessment = null;
 let currentIncidentId = null;
 let currentFindingsFilter = "all";
 let uploadedFileObject = null;
+let demoMode = false;
 
 // Build text nodes with textContent so untrusted email/API values stay inert.
 function appendText(parent, tagName, value, className = "") {
@@ -27,6 +28,11 @@ function formatDate(value, options = {}) {
   if (!value) return "Unavailable";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Unavailable" : date.toLocaleString(undefined, options);
+}
+
+async function getResponseError(response, fallback) {
+  const body = await response.json().catch(() => ({}));
+  return typeof body.detail === "string" ? body.detail : fallback;
 }
 
 // Built-in Realistic Test Scenarios
@@ -151,9 +157,33 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // Initial incidents load
-  loadIncidentsList();
+  initializeWorkspace();
 });
+
+async function initializeWorkspace() {
+  try {
+    const response = await fetch("/api/status");
+    if (!response.ok) throw new Error("Application status is unavailable.");
+    const status = await response.json();
+    demoMode = status.demo_mode === true;
+  } catch (_error) {
+    // Fail closed in the UI if it cannot confirm whether shared storage is enabled.
+    demoMode = true;
+  }
+
+  if (demoMode) {
+    document.getElementById("demo-mode-banner").classList.remove("hidden");
+    document.getElementById("input-help").textContent = "In public demo mode, email is analyzed for this response only. Submitted messages and assessment details are not saved.";
+    document.getElementById("retention-option").classList.add("hidden");
+    document.getElementById("retain-evidence-checkbox").checked = false;
+    document.getElementById("history-storage-label").textContent = "Disabled in public demo";
+    document.getElementById("triage-actions").classList.add("hidden");
+    document.getElementById("demo-review-note").classList.remove("hidden");
+    document.getElementById("audit-trail-disclosure").classList.add("hidden");
+  } else {
+    loadIncidentsList();
+  }
+}
 
 function handleFileSelection(file) {
   const errorBox = document.getElementById("submit-error");
@@ -286,9 +316,9 @@ async function submitAnalysis() {
     }
 
     const data = await response.json();
-    data.evidence_retained = retainEvidence;
+    data.evidence_retained = !demoMode && retainEvidence;
     renderAssessment(data);
-    loadIncidentsList();
+    if (!demoMode) loadIncidentsList();
     document.getElementById("analysis-status").textContent = "Assessment complete. Review the summary and findings.";
   } catch (err) {
     errBox.textContent = err.message;
@@ -408,7 +438,7 @@ function renderAssessment(data) {
   filterFindings("all");
 
   // Audit Events
-  renderAuditTrail(data.incident_id);
+  if (!demoMode) renderAuditTrail(data.incident_id);
 
   // Scroll to results
   resContainer.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -579,7 +609,7 @@ async function submitReviewUpdate() {
       body: JSON.stringify({ status, notes }),
     });
 
-    if (!res.ok) throw new Error("Failed to update incident review status.");
+    if (!res.ok) throw new Error(await getResponseError(res, "Failed to update incident review status."));
 
     const resBadge = document.getElementById("res-review-badge");
     resBadge.textContent = status;
@@ -618,6 +648,7 @@ async function verifyTamperIntegrity() {
     const res = await fetch(`/api/incidents/${encodeURIComponent(currentIncidentId)}/verify-evidence`, {
       method: "POST",
     });
+    if (!res.ok) throw new Error(await getResponseError(res, "Evidence integrity checking is unavailable."));
     const data = await res.json();
 
     if (data.status === "VERIFIED") {
@@ -651,7 +682,7 @@ async function renderAuditTrail(incidentId) {
   const container = document.getElementById("audit-trail-list");
   try {
     const res = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}`);
-    if (!res.ok) throw new Error("Incident activity could not be loaded.");
+    if (!res.ok) throw new Error(await getResponseError(res, "Incident activity could not be loaded."));
     const incident = await res.json();
 
     container.replaceChildren();
@@ -686,7 +717,7 @@ async function loadIncidentsList() {
 
   try {
     const res = await fetch("/api/incidents?limit=50");
-    if (!res.ok) throw new Error(`Could not load incident history (server error ${res.status}).`);
+    if (!res.ok) throw new Error(await getResponseError(res, `Could not load incident history (server error ${res.status}).`));
     const list = await res.json();
 
     countEl.textContent = list.length;
@@ -744,7 +775,7 @@ async function loadIncidentsList() {
 async function viewIncidentDetail(incidentId) {
   try {
     const res = await fetch(`/api/incidents/${encodeURIComponent(incidentId)}`);
-    if (!res.ok) throw new Error("Could not load incident details.");
+    if (!res.ok) throw new Error(await getResponseError(res, "Could not load incident details."));
     const inc = await res.json();
     if (!inc.assessment) throw new Error("This incident has no assessment details to display.");
     switchView("analyze");

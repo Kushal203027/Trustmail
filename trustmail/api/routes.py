@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
 
-from trustmail.config import MAX_INPUT_BYTES
+from trustmail.config import DEMO_MODE, MAX_INPUT_BYTES
 from trustmail.parser import parse_email_defensively
 from trustmail.analyzer.evaluator import evaluate_email
 from trustmail.analyzer.models import AssessmentResult
@@ -25,6 +25,21 @@ from trustmail.db import (
 
 router = APIRouter(prefix="/api", tags=["trustmail"])
 logger = logging.getLogger(__name__)
+DEMO_MODE_MESSAGE = (
+    "Incident history, details, review saving, and evidence integrity are disabled in public demo mode. "
+    "Email assessments are processed for this response and are not saved."
+)
+
+
+@router.get("/status")
+async def get_application_status():
+    """Expose non-sensitive capabilities so the UI can explain demo restrictions."""
+    return {"demo_mode": DEMO_MODE, "history_enabled": not DEMO_MODE}
+
+
+def reject_shared_record_access() -> None:
+    if DEMO_MODE:
+        raise HTTPException(status_code=503, detail=DEMO_MODE_MESSAGE)
 
 
 async def read_limited_upload(file: UploadFile) -> bytes:
@@ -82,6 +97,11 @@ async def analyze_email_text(payload: AnalyzeTextRequest):
             detail="Email analysis failed due to an internal error.",
         )
 
+    # Public demo analysis is deliberately ephemeral, even if a client submits
+    # retain_evidence=true. Do not write message metadata or assessment content.
+    if DEMO_MODE:
+        return assessment
+
     # Manage evidence retention
     evidence_path_str: Optional[str] = None
     if payload.retain_evidence:
@@ -134,6 +154,10 @@ async def analyze_email_file(
             detail="Email analysis failed due to an internal error.",
         )
 
+    # Ignore retain_evidence in public demo mode and do not save personal data.
+    if DEMO_MODE:
+        return assessment
+
     evidence_path_str: Optional[str] = None
     if retain_evidence:
         saved_path = store_evidence(raw_bytes, assessment.evidence_hash)
@@ -162,12 +186,14 @@ async def analyze_email_file(
 @router.get("/incidents")
 async def get_all_incidents(limit: int = Query(50, ge=1, le=100), offset: int = Query(0, ge=0)):
     """Lists incidents with pagination."""
+    reject_shared_record_access()
     return list_incidents(limit=limit, offset=offset)
 
 
 @router.get("/incidents/{incident_id}")
 async def get_single_incident(incident_id: str):
     """Retrieves full incident metadata, structured assessment, and audit trail."""
+    reject_shared_record_access()
     record = get_incident(incident_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found.")
@@ -177,6 +203,7 @@ async def get_single_incident(incident_id: str):
 @router.patch("/incidents/{incident_id}/review")
 async def update_incident_review(incident_id: str, payload: ReviewUpdateRequest):
     """Updates the human review status and analyst notes."""
+    reject_shared_record_access()
     try:
         updated = update_review_status(incident_id, payload.status, payload.notes)
         if not updated:
@@ -192,6 +219,7 @@ async def verify_incident_evidence(incident_id: str):
     Verifies cryptographic integrity of the retained original bytes.
     Demonstrates local tamper detection.
     """
+    reject_shared_record_access()
     record = get_incident(incident_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Incident not found.")

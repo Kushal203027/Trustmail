@@ -65,6 +65,20 @@ Open your browser and navigate to:
 http://127.0.0.1:8000
 ```
 
+### Public hosted demo
+
+TrustMail has no analyst authentication. For any publicly reachable demo, set
+`TRUSTMAIL_DEMO_MODE=true` in the hosting service's environment settings (for
+Render: open the service, select **Environment**, add the key and value, then
+save and redeploy). In this mode, paste and file analysis still return a result,
+but submitted email and assessment metadata are not written to SQLite or the
+evidence directory. Shared history, incident details, review updates, and
+integrity checks return an unavailable response. This is a privacy safeguard
+for a demonstration, not user accounts or per-visitor isolation. Existing data
+already on a persistent disk is not deleted by enabling the setting.
+
+Leave the setting unset or `false` for the existing local-development behavior.
+
 ---
 
 ## 4. Running the Automated Test Suite

@@ -4,6 +4,7 @@ Provides centralized, safe configuration defaults for the local prototype.
 """
 
 from pathlib import Path
+import os
 
 # Base directories
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -14,6 +15,10 @@ DATABASE_PATH = DATA_DIR / "trustmail.db"
 # Ingress Limits
 # Enforce strict 1 MB size limit as specified in foundation requirements
 MAX_INPUT_BYTES = 1 * 1024 * 1024  # 1,048,576 bytes
+
+# Public hosted demos have no analyst authentication. Disable shared incident
+# storage and record access when this explicit environment switch is enabled.
+DEMO_MODE = os.getenv("TRUSTMAIL_DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # Networking & Binding
 HOST = "127.0.0.1"  # Local development only, do not expose to public interfaces
