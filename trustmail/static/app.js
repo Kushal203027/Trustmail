@@ -25,6 +25,19 @@ function appendBadge(parent, label, className) {
   return appendText(parent, "span", label, `badge ${className}`);
 }
 
+function reviewStatusPresentation(status, reviewRequired) {
+  if (status === "PENDING" && !reviewRequired) {
+    return { label: "No review queued by rules", className: "badge-neutral" };
+  }
+  if (status === "PENDING") {
+    return { label: "Review pending", className: "badge-warning" };
+  }
+  if (status === "CONFIRMED_THREAT") {
+    return { label: "Confirmed threat", className: "badge-alert" };
+  }
+  return { label: String(status || "Unknown").replace(/_/g, " "), className: "badge-info" };
+}
+
 function formatDate(value, options = {}) {
   if (!value) return "Unavailable";
   const date = new Date(value);
@@ -183,6 +196,7 @@ async function initializeWorkspace() {
     document.getElementById("demo-review-note").classList.remove("hidden");
     document.getElementById("audit-trail-disclosure").classList.add("hidden");
     document.getElementById("tab-btn-incidents").classList.add("hidden");
+    document.getElementById("btn-refresh-history").classList.add("hidden");
     document.getElementById("btn-submit-analyze").disabled = true;
     return;
   }
@@ -193,6 +207,8 @@ async function initializeWorkspace() {
     document.getElementById("retention-option").classList.add("hidden");
     document.getElementById("retain-evidence-checkbox").checked = false;
     document.getElementById("history-storage-label").textContent = "Disabled in public demo";
+    document.getElementById("tab-btn-incidents").classList.add("hidden");
+    document.getElementById("btn-refresh-history").classList.add("hidden");
     document.getElementById("triage-actions").classList.add("hidden");
     document.getElementById("demo-review-note").classList.remove("hidden");
     document.getElementById("audit-trail-disclosure").classList.add("hidden");
@@ -224,7 +240,7 @@ function handleFileSelection(file) {
 
 // Navigation View Switching
 function switchView(viewName) {
-  if (!statusConfirmed && viewName === "incidents") return;
+  if ((!statusConfirmed || demoMode) && viewName === "incidents") return;
   const onAnalyze = viewName === "analyze";
   document.getElementById("tab-btn-analyze").classList.toggle("active", onAnalyze);
   document.getElementById("tab-btn-incidents").classList.toggle("active", !onAnalyze);
@@ -377,22 +393,26 @@ function renderAssessment(data) {
   const outcomeTitle = document.getElementById("outcome-title");
   const outcomeDescription = document.getElementById("outcome-description");
   const outcomePanel = document.querySelector(".outcome-panel");
+  const outcomeMark = document.querySelector(".outcome-mark");
   if (data.human_review_required) {
     outcomeTitle.textContent = "Human review required before acting";
     outcomeDescription.textContent = "TrustMail found signals that need a person to review. Check the findings and verify important requests through a separate trusted channel.";
+    outcomeMark.textContent = "!";
     outcomePanel.classList.add("outcome-review");
     outcomePanel.classList.remove("outcome-quiet");
   } else {
-    outcomeTitle.textContent = "No configured rule required escalation";
+    outcomeTitle.textContent = "No rule-based escalation";
     outcomeDescription.textContent = "This does not establish that the email is safe. Review the unknowns and consider the context of the request.";
+    outcomeMark.textContent = "i";
     outcomePanel.classList.add("outcome-quiet");
     outcomePanel.classList.remove("outcome-review");
   }
 
   // Review Badge
   const reviewBadge = document.getElementById("res-review-badge");
-  reviewBadge.textContent = data.human_review_status;
-  reviewBadge.className = `badge ${data.human_review_status === "PENDING" ? "badge-warning" : "badge-info"}`;
+  const reviewState = reviewStatusPresentation(data.human_review_status, data.human_review_required);
+  reviewBadge.textContent = reviewState.label;
+  reviewBadge.className = `badge ${reviewState.className}`;
 
   // 4 Dimensions
   // Dim 1: IAL
@@ -441,7 +461,7 @@ function renderAssessment(data) {
       reasonsList.appendChild(li);
     });
   } else {
-    triageFlag.textContent = "No review required by current rules";
+    triageFlag.textContent = "No rule-based escalation";
     triageFlag.className = "badge badge-neutral";
     reasonsBox.classList.add("hidden");
   }
@@ -635,8 +655,9 @@ async function submitReviewUpdate() {
     if (!res.ok) throw new Error(await getResponseError(res, "Failed to update incident review status."));
 
     const resBadge = document.getElementById("res-review-badge");
-    resBadge.textContent = status;
-    resBadge.className = `badge ${status === "CONFIRMED_THREAT" ? "badge-alert" : status === "PENDING" ? "badge-warning" : "badge-info"}`;
+    const reviewState = reviewStatusPresentation(status, Boolean(currentAssessment && currentAssessment.human_review_required));
+    resBadge.textContent = reviewState.label;
+    resBadge.className = `badge ${reviewState.className}`;
 
     renderAuditTrail(currentIncidentId);
     loadIncidentsList();
@@ -732,6 +753,8 @@ async function renderAuditTrail(incidentId) {
 
 // Load Incidents Table
 async function loadIncidentsList() {
+  if (!statusConfirmed || demoMode) return;
+
   const tbody = document.getElementById("incidents-table-body");
   const countEl = document.getElementById("incident-count");
   const errorBox = document.getElementById("incident-list-error");
@@ -769,8 +792,8 @@ async function loadIncidentsList() {
 
       const reviewCell = tr.insertCell();
       const reviewStatus = inc.human_review_status || "Unknown";
-      const reviewClass = reviewStatus === "PENDING" ? "badge-warning" : reviewStatus === "CONFIRMED_THREAT" ? "badge-alert" : "badge-neutral";
-      appendBadge(reviewCell, reviewStatus, reviewClass);
+      const reviewState = reviewStatusPresentation(reviewStatus, Boolean(inc.human_review_required));
+      appendBadge(reviewCell, reviewState.label, reviewState.className);
       appendText(tr.insertCell(), "span", inc.evidence_retained ? "Copy kept" : "Not retained");
 
       const actionCell = tr.insertCell();

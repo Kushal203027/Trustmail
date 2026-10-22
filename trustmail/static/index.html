@@ -27,7 +27,7 @@
         <span class="note-icon" aria-hidden="true">i</span>
         <p>An unfamiliar sender is not automatically dangerous. TrustMail highlights signals for review; it cannot guarantee an email is safe.</p>
       </div>
-      <div class="sidebar-footer"><span class="status-dot"></span>Local assessment workspace</div>
+      <div class="sidebar-footer"><span class="status-dot"></span>Email assessment workspace</div>
     </aside>
 
     <main id="main-content" class="main-content">
@@ -54,7 +54,7 @@
             <div id="intake-paste-box" class="intake-mode-box" role="group" aria-labelledby="subtab-paste">
               <label for="raw-email-input" class="form-label">Email headers and message</label>
               <textarea id="raw-email-input" class="code-editor" placeholder="Paste the complete email here, including its headers…" spellcheck="false" aria-describedby="input-help byte-counter"></textarea>
-              <div class="input-meta"><span id="input-help">Processed locally. Sender, subject, findings, and review notes are saved to local history. Original bytes are kept only if you opt in.</span><span id="byte-counter" aria-live="polite">0 bytes / 1,048,576 bytes limit</span></div>
+              <div class="input-meta"><span id="input-help">Privacy details appear after the server confirms its mode. Original bytes are kept only if retention is enabled.</span><span id="byte-counter" aria-live="polite">0 bytes / 1,048,576 bytes limit</span></div>
             </div>
 
             <div id="intake-upload-box" class="intake-mode-box hidden" role="group" aria-labelledby="subtab-upload">
@@ -95,7 +95,7 @@
               </ul>
               <div class="explainer-foot"><strong>Human review matters</strong><span>Verify important requests through a trusted, separate channel.</span></div>
             </section>
-            <section class="privacy-note"><span aria-hidden="true">◇</span><p><strong>Local demo only</strong><br>No analyst sign-in is required. Keep TrustMail bound to this computer; do not expose it as a shared service. Retention is optional. SHA-256 can compare bytes with an intake reference; it does not prove provenance or chain of custody.</p></section>
+            <section class="privacy-note"><span aria-hidden="true">◇</span><p><strong>Public demo privacy</strong><br>In public demo mode, email is processed on the TrustMail server for this response only; messages and assessment details are not saved to shared history. Visitors are not individually signed in, so do not submit private email. In local mode, assessment details are saved to that server's local history; original bytes are retained only if you opt in. SHA-256 can compare bytes with an intake reference; it does not prove sender identity, provenance, or chain of custody.</p></section>
           </aside>
         </div>
 
@@ -144,14 +144,14 @@
       </section>
 
       <section id="view-incidents" class="view-content hidden" aria-labelledby="incidents-heading">
-        <div class="page-intro"><div><p class="eyebrow">WORKSPACE / HISTORY</p><h2 id="incidents-heading">Previous checks</h2><p>Open an assessment to review its findings, evidence, and human review history.</p></div><button class="btn btn-secondary" data-action="refresh-history">↻ Refresh</button></div>
+        <div class="page-intro"><div><p class="eyebrow">WORKSPACE / HISTORY</p><h2 id="incidents-heading">Previous checks</h2><p>Open an assessment to review its findings, evidence, and human review history.</p></div><button id="btn-refresh-history" class="btn btn-secondary" data-action="refresh-history">↻ Refresh</button></div>
         <section class="panel history-panel"><div class="history-caption"><div><h3>Incident history</h3><p>Most recent assessments are listed first.</p></div><span id="history-storage-label" class="history-local">Stored locally</span></div>
           <div class="table-responsive" role="region" aria-label="Incident history table; scroll horizontally to see all columns" tabindex="0"><table class="data-table incidents-table"><thead><tr><th>Created</th><th>Claimed sender</th><th>Subject</th><th>Assessment</th><th>Review state</th><th>Evidence copy</th><th></th></tr></thead><tbody id="incidents-table-body" aria-busy="true"><tr class="empty-row"><td colspan="7">Loading incident history…</td></tr></tbody></table></div>
           <div id="incident-list-error" class="inline-state hidden" role="status"></div>
         </section>
       </section>
 
-      <footer class="app-footer"><span>TrustMail · Local email assessment tool</span><span>Prototype results depend on available evidence and do not guarantee safety.</span></footer>
+      <footer class="app-footer"><span>TrustMail · Email assessment prototype</span><span>Prototype results depend on available evidence and do not guarantee safety.</span></footer>
     </main>
   </div>
   <script src="/static/app.js"></script>

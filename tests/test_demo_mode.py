@@ -112,11 +112,46 @@ def test_frontend_explains_demo_limits_and_uses_server_error_message():
 
 def test_frontend_does_not_claim_ephemeral_processing_when_status_is_unknown():
     app_js = (ROOT / "trustmail" / "static" / "app.js").read_text(encoding="utf-8")
+    index_html = (ROOT / "trustmail" / "static" / "index.html").read_text(encoding="utf-8")
 
     assert "let statusConfirmed = false" in app_js
     assert "TrustMail cannot confirm its privacy mode" in app_js
     assert "Analysis is disabled until TrustMail confirms" in app_js
     assert "if (!statusConfirmed)" in app_js
+    assert 'document.getElementById("btn-refresh-history").classList.add("hidden")' in app_js
+    assert "Privacy details appear after the server confirms its mode." in index_html
+
+
+def test_frontend_hides_and_guards_history_in_public_demo_mode():
+    app_js = (ROOT / "trustmail" / "static" / "app.js").read_text(encoding="utf-8")
+    index_html = (ROOT / "trustmail" / "static" / "index.html").read_text(encoding="utf-8")
+
+    assert 'document.getElementById("tab-btn-incidents").classList.add("hidden")' in app_js
+    assert "if ((!statusConfirmed || demoMode) && viewName === \"incidents\") return;" in app_js
+    assert "if (!statusConfirmed || demoMode) return;" in app_js
+    assert 'id="btn-refresh-history"' in index_html
+
+
+def test_public_demo_privacy_copy_describes_server_processing_without_local_claims():
+    index_html = (ROOT / "trustmail" / "static" / "index.html").read_text(encoding="utf-8")
+
+    assert "Public demo privacy" in index_html
+    assert "processed on the TrustMail server for this response only" in index_html
+    assert "not saved to shared history" in index_html
+    assert "Visitors are not individually signed in" in index_html
+    assert "Local demo only" not in index_html
+    assert "Keep TrustMail bound to this computer" not in index_html
+    assert "Local assessment workspace" not in index_html
+
+
+def test_frontend_review_badges_match_rule_based_review_requirement():
+    app_js = (ROOT / "trustmail" / "static" / "app.js").read_text(encoding="utf-8")
+
+    assert 'label: "No review queued by rules", className: "badge-neutral"' in app_js
+    assert 'label: "Review pending", className: "badge-warning"' in app_js
+    assert "reviewStatusPresentation(reviewStatus, Boolean(inc.human_review_required))" in app_js
+    assert 'outcomeTitle.textContent = "No rule-based escalation"' in app_js
+    assert 'outcomeMark.textContent = "i"' in app_js
 
 
 def test_concurrent_demo_analyses_return_their_own_synthetic_results(monkeypatch):
