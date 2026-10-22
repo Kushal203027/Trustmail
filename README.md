@@ -1,148 +1,164 @@
-# TrustMail — Prototype v0.1.0 (Milestone 2)
+# TrustMail
 
-TrustMail is an open, software-only cybersecurity platform designed for structured email security analysis, evidence tracking, and human-reviewed incident triage.
+### Explainable email threat assessment, with evidence behind every signal.
 
-This repository contains the **first working prototype** (Milestone 2) of the TrustMail architecture, implementing deterministic analysis, orthogonal identity and threat assessment, defensive email parsing, evidence integrity verification, and human-in-the-loop review workflows.
+[**🚀 Live Demo — Open TrustMail**](https://trustmail.onrender.com)
 
----
+TrustMail helps people investigate suspicious email with understandable evidence. It assesses **Identity, Authenticity, Threat, and Sender Trust** independently, then uses its **Evidence-to-Claim Ledger** to distinguish observed signals from rule-based interpretations and their limitations. It supports human investigation; it does not declare an email safe or a sender genuine.
 
-## 1. Key Principles
+> **For the hosted demo:** email is processed on the TrustMail server for the current response. In public demo mode, submitted messages and assessments are not saved to shared incident history. The demo does not sign visitors in or isolate results by visitor; please use synthetic or non-sensitive email only.
 
-1. **Explicit Orthogonality:** Identity Assurance (T-IAL), Message Authenticity (MAL), Threat Severity (TSR), and Sender Trust (STI) are evaluated as independent dimensions. They are never combined into an arbitrary scalar "trust score".
-2. **Asymmetric Safety:**
-   - *Unknown sender $\neq$ Malicious.* Unverified senders are treated as neutral, not criminal.
-   - *Verified identity $\neq$ Harmless.* Authenticated domains can be compromised (Account Takeover, BEC).
-3. **Non-Autonomous Dismissal:** High-consequence indicators (financial changes, credential harvesting, protocol violations) mandate human analyst review. No automated rule or model can silently dismiss flagged communications.
-4. **Epistemological Integrity:** Findings are strictly partitioned into Verified Facts, Unverified Claims, Heuristics, and Unknown Information.
-5. **Privacy by Default:** Raw email byte streams are discarded immediately post-assessment unless explicit evidence retention is authorized.
+## Why TrustMail
 
----
+Email warnings are often difficult to act on: a risk label may not show what was observed, why a rule reacted, or what remains unknown. TrustMail makes those distinctions visible. A parser-extracted fact, an email's own claim, a heuristic interpretation, and missing information are represented separately so reviewers can examine the reasoning instead of relying on an opaque overall score.
 
-## 2. Prerequisites
+TrustMail does not combine its dimensions into a numeric confidence score. An unfamiliar sender is not automatically malicious, and a warning is a reason to investigate—not proof of malicious intent.
 
-- Python 3.10 or higher (verified on Python 3.14).
-- Commodity operating system (Windows, Linux, macOS).
-- No external hardware tokens, smartcards, or physical sensors required.
+## What the assessment covers
 
----
+Each analysis reports four dimensions independently:
 
-## 3. Quickstart & Installation
+| Dimension | What it describes |
+| --- | --- |
+| **Identity (T-IAL)** | What the email's sender fields claim and whether available identity signals are incomplete or inconsistent. A `From` header is a claim, not verified real-world identity. |
+| **Authenticity (MAL)** | Message-level evidence such as an intake SHA-256 digest and the presence of signature-related headers. A digest supports byte comparison; it does not authenticate the sender. |
+| **Threat (TSR)** | Deterministic indicators in message content and structure, including selected suspicious-link patterns, impersonation cues, explicit threat-like wording, pressure language, and attachment types. |
+| **Sender trust (STI)** | Whether a sender trust baseline is established. The current analyzer reports this baseline as unestablished (`STI 0`) and does not query external reputation services; unknown is not malicious. |
 
-### Step 1: Clone and Enter Directory
-```bash
-cd "kagada project"
+### Evidence-to-Claim Ledger
+
+The ledger separates **observed evidence** from the **rule/reference** and its interpretation. It also displays finding category, severity, limitations, and review guidance when available. Some selected findings include structured parser observations and source locations. Other findings show their available evidence text and identify when a structured observation or precise location is unavailable. This makes the current evidence boundary visible rather than implying every conclusion has the same level of traceability.
+
+## Try it
+
+- Paste RFC 5322 email text, or upload an `.eml` file (maximum input size: **1 MB**).
+- Load a built-in synthetic sample to explore the workflow.
+- Review the summary, four dimensions, and expandable Evidence-to-Claim Ledger.
+- In local mode, inspect incident history and update review status. Optional original-byte retention enables a later SHA-256 comparison of the saved copy.
+
+When original bytes are retained, the integrity check compares them with the intake SHA-256 reference digest. A mismatch can reveal byte changes since intake. This comparison does not prove sender identity or legal chain of custody. Review states record a human workflow decision; they do not make the system's conclusion true.
+
+## Privacy and deployment modes
+
+### Hosted public demo
+
+The hosted demo uses `TRUSTMAIL_DEMO_MODE=true`. Analysis is performed by the TrustMail server and the result is returned to the browser, but submitted email, assessment metadata, and retained evidence are not written for the request. The shared history, incident detail, review update, and integrity-check endpoints are unavailable in this mode. There are no analyst accounts or per-visitor data partitions, so do not submit private email.
+
+Enabling demo mode does not delete records that may already exist in the server's database or evidence directory; it disables the shared-record routes and prevents new analysis records from being saved. Deployment operators should review existing server storage separately.
+
+### Local development
+
+With demo mode unset or false, incident metadata and assessment results are stored in the local SQLite database. Original email bytes are stored only when the retention option is selected. The development server binds to `127.0.0.1` by default and has no analyst authentication; keep it on a trusted local machine. Do not expose local mode as a shared service.
+
+The current version uses deterministic, rule-based analysis and does **not** run live SPF, DKIM, or DMARC verification. TrustMail may report that an `Authentication-Results` or `DKIM-Signature` header is present, but it does not validate those results against live DNS or cryptographic keys. Findings are indicators for human investigation, not proof of authenticity or malicious intent, and they cannot guarantee safety. Absence of a finding does not establish that an email is harmless.
+
+## How it works
+
+```text
+Paste text / .eml upload
+        ↓
+FastAPI intake and defensive email parsing
+        ↓
+Identity · Authenticity · Threat · Sender Trust analyzers
+        ↓
+Structured assessment and findings
+        ↓
+Browser summary, dimensions, and Evidence-to-Claim Ledger
 ```
 
-### Step 2: Create and Activate Virtual Environment
-On Windows (PowerShell):
-```powershell
+The browser uses plain HTML, CSS, and JavaScript. The Python/FastAPI service parses email, coordinates deterministic analyzers, and serves the API and static interface. In local mode, SQLite stores incident and review records; optional evidence retention stores original bytes for comparison. In public demo mode, analysis returns without saving new incident or evidence records. Dynamic email-derived values are rendered as text in the interface.
+
+### Technology
+
+- **Python 3.10+**, **FastAPI**, and **Uvicorn** for the application and API
+- Python email parsing and **Pydantic** assessment models
+- **SQLite** for local incident and review history
+- Vanilla **HTML, CSS, and JavaScript** for the interface
+- **pytest** and **HTTPX** for automated tests
+
+## Run locally
+
+### Requirements
+
+- Python 3.10 or newer
+- Git
+
+### Setup
+
+```bash
+git clone https://github.com/Kushal203027/Trustmail.git
+cd Trustmail
 python -m venv .venv
+```
+
+Activate the environment:
+
+```powershell
+# Windows PowerShell
 .\.venv\Scripts\Activate.ps1
 ```
 
-On Linux / macOS:
 ```bash
-python3 -m venv .venv
+# macOS / Linux
 source .venv/bin/activate
 ```
 
-### Step 3: Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+Install dependencies and start the local server:
 
-### Step 4: Run the Application
 ```bash
+python -m pip install -r requirements.txt
 python main.py
 ```
-Or with Uvicorn directly:
+
+Then open **http://127.0.0.1:8000**. This address is for local development; the hosted prototype is linked at the top of this README.
+
+To run Uvicorn directly instead:
+
 ```bash
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Open your browser and navigate to:
-```
-http://127.0.0.1:8000
-```
+## Run tests
 
-### Public hosted demo
+Run the full automated suite from the repository root:
 
-TrustMail has no analyst authentication. For any publicly reachable demo, set
-`TRUSTMAIL_DEMO_MODE=true` in the hosting service's environment settings (for
-Render: open the service, select **Environment**, add the key and value, then
-save and redeploy). In this mode, paste and file analysis still return a result,
-but submitted email and assessment metadata are not written to SQLite or the
-evidence directory. Shared history, incident details, review updates, and
-integrity checks return an unavailable response. This is a privacy safeguard
-for a demonstration, not user accounts or per-visitor isolation. Existing data
-already on a persistent disk is not deleted by enabling the setting.
-
-Leave the setting unset or `false` for the existing local-development behavior.
-
----
-
-## 4. Running the Automated Test Suite
-
-TrustMail includes a comprehensive test suite across 10 functional and security areas:
 ```bash
-pytest
+python -m pytest -q
 ```
 
-Run the deterministic synthetic behavior evaluation with:
+The suite covers parsing and malformed input, request-size limits, assessment dimensions, threat indicators, evidence serialization, review and integrity workflows, demo-mode restrictions, and safe rendering. To run the small hand-labelled synthetic behavior check:
 
-```powershell
+```bash
 python tests/run_synthetic_evaluation.py
 ```
 
-It evaluates eight hand-labelled synthetic examples. Its counts describe agreement with those examples only and are not a measure of real-world accuracy.
+That script checks eight synthetic examples against expected findings. It is a development check, not a benchmark or estimate of real-world detection accuracy.
 
-### Test Coverage Areas
-1. **Valid Email Parsing:** Single-part and multipart MIME structure extraction (`test_parser.py`).
-2. **Malformed Email Handling:** Missing `From:` headers, multiple conflicting `From:` headers (RFC 5322 violation), missing `Date:`/`Message-ID:`, binary garbage (`test_malformed.py`).
-3. **Input-Size Enforcement:** Strict 1 MB cap enforcement in parser and API endpoints (`test_size_limit.py`).
-4. **Spoofed Display Names:** Embedded email mismatches and high-trust brand impersonation against webmail domains (`test_spoofed_display_name.py`).
-5. **Untrusted Authentication Headers:** Categorization of in-band `Authentication-Results` as unverified claims (`test_auth_results.py`).
-6. **Independent Assessment Dimensions:** Validation of 4-tuple orthogonality (`test_independent_dimensions.py`).
-7. **Hash Consistency:** Exact SHA-256 reproducibility over identical byte sequences (`test_evidence_hash.py`).
-8. **Tamper Detection:** Verification that modifying retained on-disk bytes triggers `TAMPER_DETECTED` (`test_tamper_detection.py`).
-9. **Human-Review Escalation:** Automated review mandates on high severity and review state transitions (`test_human_review.py`).
-10. **XSS & Hostile Content Isolation:** Safe handling and HTML escaping of `<script>`, `onerror`, and SVG injections (`test_xss_safety.py`).
+## Repository map
 
----
+```text
+main.py                         FastAPI entry point and static-file serving
+trustmail/api/routes.py         Analysis, status, history, review, and integrity routes
+trustmail/parser.py             Defensive email parsing
+trustmail/analyzer/             Four analyzers, evaluator, and assessment models
+trustmail/static/               HTML, CSS, and JavaScript interface
+trustmail/db.py                 SQLite incident and review storage
+trustmail/storage.py            Optional retained evidence and byte comparison
+tests/                          Automated tests and synthetic evaluation
+```
 
-## 5. Prototype Features & User Interface
+Additional design and security context is in [`ARCHITECTURE.md`](ARCHITECTURE.md), [`THREAT_MODEL.md`](THREAT_MODEL.md), [`LIMITATIONS.md`](LIMITATIONS.md), [`IDENTITY_SPEC.md`](IDENTITY_SPEC.md), and [`RESEARCH.md`](RESEARCH.md).
 
-The web interface (`http://127.0.0.1:8000`) provides a responsive, restrained cybersecurity console:
-- **Ingress Panel:** Supports raw RFC 5322 text pasting or `.eml` drag-and-drop file upload with a live byte counter.
-- **Pre-Packaged Scenarios:** One-click loading of realistic test vectors (Display-Name BEC, Credential Phishing, Malformed Headers, Clean Newsletter).
-- **Four Orthogonal Dimension Cards:**
-  - `T-IAL`: TrustMail Identity Assurance Level (T-IAL 0 through T-IAL 4-P).
-  - `MAL`: Message Authenticity Level (MAL 0 through MAL 2).
-  - `TSR`: Threat Severity Rating (LOW, MEDIUM, HIGH, CRITICAL).
-  - `STI`: Sender Trust Index (STI 0 through STI 2).
-- **Epistemological Filter Tabs:** Filter findings by *Verified Facts*, *Unverified Claims*, *Heuristic Findings*, and *Unknown Information*.
-- **Decision Support & Triage:** View escalation triggers, update review status (`PENDING`, `UNDER_REVIEW`, `ESCALATED`, `DISMISSED`, `CONFIRMED_THREAT`), and record analyst notes.
-- **Tamper Verification:** If evidence retention was enabled, click "Verify Retained Byte Integrity" to recompute SHA-256 over the on-disk file and prove tamper detection.
-- **Incident History Log:** Browse, sort, and inspect past analyzed incidents stored in SQLite.
+## Roadmap — planned, not implemented
 
----
+- Add live SPF, DKIM, and DMARC verification with clear source and result provenance.
+- Extend structured observation and source-location traceability across more finding types.
+- Add authenticated analyst accounts and per-user incident separation before enabling shared history in a hosted service.
+- Expand synthetic and independently reviewed evaluation cases, including false-positive analysis.
 
-## 6. Project Documentation Directory
+These are future directions; they are not current TrustMail capabilities.
 
-- **`VISION.md`**: Mission, problem statement, long-term architectural vision, safety principles, and success criteria.
-- **`THREAT_MODEL.md`**: STRIDE threat model, adversary profiles, trust boundaries, attack scenarios, and mitigations.
-- **`IDENTITY_SPEC.md`**: Specification of the 8 dimensions of identity, technical limitations, and the T-IAL framework.
-- **`RESEARCH.md`**: Structured research plan across 11 technical domains, separating verified facts, hypotheses, and open questions.
-- **`ARCHITECTURE.md`**: Detailed technical architecture, dataflow diagrams, and subsystem designs for the working prototype.
-- **`LIMITATIONS.md`**: Honest account of simulated features, unverified headers, and explicit security boundaries.
-- **`MILESTONES.md`**: Development milestones tracking progress from foundation to integration.
+## Project links
 
----
-
-## 7. Security & Privacy Notice
-
-TrustMail Prototype v0.1.0 is intended for local security evaluation and research:
-- Binds strictly to `127.0.0.1` (localhost).
-- Does not transmit telemetry, email contents, or user data to external cloud services or LLMs.
-- Raw email bytes are discarded immediately unless explicit retention is toggled.
-- Not a forensically certified tool; evidence hashes verify local byte consistency only and do not establish a complete chain of custody.
+- [Live demo](https://trustmail.onrender.com)
+- [GitHub repository](https://github.com/Kushal203027/Trustmail)
